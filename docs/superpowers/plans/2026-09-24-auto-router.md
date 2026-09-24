@@ -131,7 +131,7 @@ cd /home/hermes/projects/cpa-plugin-auto-router && git add docs/superpowers/plan
 **Interfaces:**
 - Produces: module path `github.com/chloeassistant/cpa-plugin-auto-router`; `make build` → `bin/auto-router.so`; `make test`; `make install` copies to `/home/hermes/cliproxyapi/plugins/auto-router.so`.
 
-- [ ] **Step 1: go.mod with local replace**
+- [x] **Step 1: go.mod with local replace**
 
 ```
 module github.com/chloeassistant/cpa-plugin-auto-router
@@ -149,7 +149,7 @@ replace github.com/router-for-me/CLIProxyAPI/v7 => /home/hermes/projects/CLIProx
 
 Run `go mod tidy` (needs a `.go` file; create `doc.go` with `package main` and a one-line comment first).
 
-- [ ] **Step 2: Makefile**
+- [x] **Step 2: Makefile**
 
 ```make
 BIN_DIR := $(CURDIR)/bin
@@ -176,7 +176,7 @@ clean:
 	rm -rf $(BIN_DIR)
 ```
 
-- [ ] **Step 3: tiers.yaml (operator-owned; the updater never writes it)**
+- [x] **Step 3: tiers.yaml (operator-owned; the updater never writes it)**
 
 ```yaml
 # Tier per catalog model id (exact id from GET /v1/models). Models in the
@@ -188,7 +188,7 @@ top:   [gpt-6-astra, gpt-6-sol, gpt-5.6-sol, claude-opus-5, claude-opus-5-5,
         claude-fable-5, claude-fable-5-1]
 ```
 
-- [ ] **Step 4: .gitignore and commit**
+- [x] **Step 4: .gitignore and commit**
 
 ```
 bin/
