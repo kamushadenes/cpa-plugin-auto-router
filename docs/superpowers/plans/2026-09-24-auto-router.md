@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- Plugin ABI `1`, RPC schema `6` (`sdk/pluginabi/types.go` at tag `v7.2.159`). Go module `replace` points at the local checkout `/home/hermes/projects/CLIProxyAPI` (already at `v7.2.159`).
+- **NEVER restart, reconfigure, or install into the production proxy on port 8317 (`cliproxyapi.service`, `/home/hermes/cliproxyapi/`).** The orchestrating agent, OMP and Hermes ru⟪HERMES-CONTEXT-COMPRESSION: 1,204 of 1,404 chars omitted here by Hermes's context compressor. This is NOT part of the original tool call and must never be reproduced in new output — always write full, untruncated content.⟫- Plugin ABI `1`, RPC schema `6` (`sdk/pluginabi/types.go` at tag `v7.2.159`). Go module `replace` points at the local checkout `/home/hermes/projects/CLIProxyAPI` (already at `v7.2.159`).
 - Plugin binary name is `auto-router.so`; host derives plugin id `auto-router` from the filename (`internal/pluginhost/platform.go:pluginFileFromPath`). Plugin id pattern: lowercase, digits, hyphen.
 - Virtual model id is exactly `auto-router`. Provider identifier returned by `executor.identifier` and `model.register` is exactly `auto-router`.
 - Jev call shape: `POST {base_url}{endpoint_path}` with `{"model","state","questions"}`; answers at `answers.<name>.choice`, `.probabilities`, `.confidence`. Defaults: `base_url=https://openrouter.ai`, `endpoint_path=/api/alpha/decisions`, `model=typesafe/jev-1.13`, key env `OPENROUTER_API_KEY`. https always; plain http only for loopback/RFC1918/CGNAT.
@@ -75,30 +75,25 @@ cpa-plugin-auto-router/
 ```bash
 cd /home/hermes/projects/CLIProxyAPI/examples/plugin/claude-web-search-router/go
 go build -buildmode=c-shared -o /home/hermes/.hermes/cache/scratch/claude-web-search-router.so .
-mkdir -p /home/hermes/cliproxyapi/plugins
-cp /home/hermes/.hermes/cache/scratch/claude-web-search-router.so /home/hermes/cliproxyapi/plugins/
+cp /home/hermes/.hermes/cache/scratch/claude-web-search-router.so /home/hermes/cliproxyapi-test/plugins/
 ```
 
-Edit `/home/hermes/cliproxyapi/config.yaml`: set `plugins.enabled: true` and replace the `example` entry under `plugins.configs` with:
+Edit `/home/hermes/cliproxyapi-test/config.yaml` (TEST instance, never the 8317 one) — under `plugins.configs` add:
 
 ```yaml
-plugins:
-  enabled: true
-  dir: plugins
-  configs:
     claude-web-search-router:
       enabled: false
 ```
 
-Then: `XDG_RUNTIME_DIR=/run/user/1000 systemctl --user restart cliproxyapi && sleep 3 && journalctl --user -u cliproxyapi -n 40 --no-pager | grep -i plugin`
+Then: `XDG_RUNTIME_DIR=/run/user/1000 systemctl --user restart cliproxyapi-test && sleep 4 && journalctl --user -u cliproxyapi-test -n 60 --no-pager | grep -i plugin`
 
 Expected: a line showing the plugin loaded (id `claude-web-search-router`, abi 1, schema 6) and no `abi mismatch` / `schema` error. Record the exact lines in the checks file.
 
 - [ ] **Step 2: Confirm the thinking suffix through the normal path is clamped, not rejected**
 
 ```bash
-KEY=$(python3 -c "import yaml;print(yaml.safe_load(open('/home/hermes/cliproxyapi/config.yaml'))['api-keys'][0])")
-curl -s http://127.0.0.1:8317/v1/chat/completions -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+KEY=$(cat /home/hermes/cliproxyapi-test/api-key)
+curl -s http://127.0.0.1:8318/v1/chat/completions -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"kimi-k3(max)","messages":[{"role":"user","content":"Say ok."}],"max_tokens":20}' | head -c 400
 ```
 
@@ -120,9 +115,9 @@ Read `sdk/api/handlers/handlers_execution.go:223-226` and `handlers_interceptors
 - [ ] **Step 5: Revert the example plugin, commit the checks file**
 
 ```bash
-rm /home/hermes/cliproxyapi/plugins/claude-web-search-router.so
-# leave plugins.enabled: true (Task 8 needs it) but remove the claude-web-search-router config entry
-XDG_RUNTIME_DIR=/run/user/1000 systemctl --user restart cliproxyapi
+rm /home/hermes/cliproxyapi-test/plugins/claude-web-search-router.so
+# remove the claude-web-search-router entry from /home/hermes/cliproxyapi-test/config.yaml plugins.configs
+XDG_RUNTIME_DIR=/run/user/1000 systemctl --user restart cliproxyapi-test
 cd /home/hermes/projects/cpa-plugin-auto-router && git add docs/superpowers/plans/2026-09-24-checks.md && git commit -m "docs: record empirical checks (ABI load, thinking clamp, session signals, header filter)"
 ```
 
@@ -160,6 +155,7 @@ Run `go mod tidy` (needs a `.go` file; create `doc.go` with `package main` and a
 BIN_DIR := $(CURDIR)/bin
 PLUGIN := $(BIN_DIR)/auto-router.so
 INSTALL_DIR := /home/hermes/cliproxyapi/plugins
+TEST_INSTALL_DIR := /home/hermes/cliproxyapi-test/plugins
 
 .PHONY: build test install clean
 build: $(PLUGIN)
@@ -173,6 +169,9 @@ test:
 install: build
 	mkdir -p $(INSTALL_DIR)
 	install -m 0644 $(PLUGIN) $(INSTALL_DIR)/auto-router.so
+install-test: build
+	mkdir -p $(TEST_INSTALL_DIR)
+	install -m 0644 $(PLUGIN) $(TEST_INSTALL_DIR)/auto-router.so
 clean:
 	rm -rf $(BIN_DIR)
 ```
@@ -976,46 +975,46 @@ def test_validate_rejects_missing_date(tmp_path):
 
 ```bash
 cd /home/hermes/projects/cpa-plugin-auto-router
-export CLIPROXY_API_KEY=$(python3 -c "import yaml;print(yaml.safe_load(open('/home/hermes/cliproxyapi/config.yaml'))['api-keys'][0])")
+export CLIPROXY_API_KEY=$(cat /home/hermes/cliproxyapi-test/api-key)   # TEST instance key; same catalog as 8317
 set -a; . /home/hermes/.hermes/.env; set +a   # OPENROUTER_API_KEY
 uv run --with pyyaml --with pyarrow --python 3.12 python -m updater \
-  --catalog http://127.0.0.1:8317 --catalog-key-env CLIPROXY_API_KEY \
+  --catalog http://127.0.0.1:8318 --catalog-key-env CLIPROXY_API_KEY \
   --tiers table/tiers.yaml --out table/models.yaml --openrouter-key-env OPENROUTER_API_KEY
 ```
 
 Expected: exit 0; summary line; `table/models.yaml` has every tiered model; `journal`-style WARN lines list untiered catalog ids (`abliterated-*`, `gpt-image-*`, `codex-auto-review`, old Claude ids — expected). Then `go test ./internal/table/ -run TestLoadGood` after pointing a copy of the test at the generated file: `cp table/models.yaml internal/table/testdata/generated.yaml` and add `TestLoadGenerated` (Load must succeed).
 
-- [ ] **Step 2: Install plugin + table**
+- [ ] **Step 2: Install plugin + table into the TEST instance**
 
 ```bash
-make install
-mkdir -p /home/hermes/cliproxyapi/plugins/auto-router
-install -m 0644 table/models.yaml /home/hermes/cliproxyapi/plugins/auto-router/models.yaml
+make install-test            # copies bin/auto-router.so to /home/hermes/cliproxyapi-test/plugins/
+mkdir -p /home/hermes/cliproxyapi-test/plugins/auto-router
+install -m 0644 table/models.yaml /home/hermes/cliproxyapi-test/plugins/auto-router/models.yaml
 ```
 
-Edit `/home/hermes/cliproxyapi/config.yaml` `plugins.configs`:
+Edit `/home/hermes/cliproxyapi-test/config.yaml` `plugins.configs`:
 
 ```yaml
     auto-router:
       enabled: true
       priority: 10
       jev_api_key_env: OPENROUTER_API_KEY
-      table_path: /home/hermes/cliproxyapi/plugins/auto-router/models.yaml
+      table_path: /home/hermes/cliproxyapi-test/plugins/auto-router/models.yaml
 ```
 
-`OPENROUTER_API_KEY` must be in the service environment: add `EnvironmentFile=/home/hermes/.hermes/.env` is **too broad** (it holds unrelated secrets) — instead create `/home/hermes/cliproxyapi/plugins/auto-router/env` (mode 0600) with the single line `OPENROUTER_API_KEY=...` copied by hand (never by an agent printing it), and add `EnvironmentFile=/home/hermes/cliproxyapi/plugins/auto-router/env` to `~/.config/systemd/user/cliproxyapi.service`. Then `systemctl --user daemon-reload && systemctl --user restart cliproxyapi`.
+`OPENROUTER_API_KEY` for the test service: `grep -E '^OPENROUTER_API_KEY=' /home/hermes/.hermes/.env > /home/hermes/cliproxyapi-test/env && chmod 600 /home/hermes/cliproxyapi-test/env` (the unit already has `EnvironmentFile=-/home/hermes/cliproxyapi-test/env`; the value is copied file-to-file, never printed). Then `XDG_RUNTIME_DIR=/run/user/1000 systemctl --user restart cliproxyapi-test`.
 
-Expected in journal: plugin `auto-router` loaded; `GET /v1/models` lists `auto-router`.
+Expected in journal: plugin `auto-router` loaded; `GET http://127.0.0.1:8318/v1/models` lists `auto-router`.
 
 - [ ] **Step 3: Smoke — trivial and hard, chat and Responses**
 
 ```bash
-KEY=$CLIPROXY_API_KEY
-curl -s http://127.0.0.1:8317/v1/chat/completions -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+KEY=$(cat /home/hermes/cliproxyapi-test/api-key)
+curl -s http://127.0.0.1:8318/v1/chat/completions -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"auto-router","messages":[{"role":"user","content":"What is 12*7? Reply with the number only."}],"max_tokens":20}'
-curl -sN http://127.0.0.1:8317/v1/responses -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
+curl -sN http://127.0.0.1:8318/v1/responses -H "Authorization: Bearer $KEY" -H 'Content-Type: application/json' \
   -d '{"model":"auto-router","stream":true,"input":"Design a migration plan to move a 40-table Postgres schema to multi-tenant row-level security without downtime; list risks and a rollback strategy."}' | head -c 1500
-journalctl --user -u cliproxyapi -n 50 --no-pager | grep "auto-router decision"
+journalctl --user -u cliproxyapi-test -n 50 --no-pager | grep "auto-router decision"
 ```
 
 Expected: first → 200 with an answer, log line `difficulty=trivial tier=flash thinking=low`; second → SSE `response.created … response.output_text.delta …`, log line `difficulty=hard|extreme tier=top thinking=xhigh|max`. Record both log lines in `README.md` under "Verified".
@@ -1029,13 +1028,12 @@ Then send a **second** trivial turn with the same `prompt_cache_key` as the hard
 ```ini
 [Unit]
 Description=Rebuild auto-router benchmark table
-After=network-online.target cliproxyapi.service
+After=network-online.target
 [Service]
 Type=oneshot
 WorkingDirectory=/home/hermes/projects/cpa-plugin-auto-router
-EnvironmentFile=/home/hermes/cliproxyapi/plugins/auto-router/env
-Environment=CLIPROXY_API_KEY_FILE=/home/hermes/cliproxyapi/plugins/auto-router/proxy-key
-ExecStart=/home/hermes/.local/bin/uv run --with pyyaml --with pyarrow --python 3.12 python -m updater --catalog http://127.0.0.1:8317 --catalog-key-file ${CLIPROXY_API_KEY_FILE} --tiers table/tiers.yaml --out /home/hermes/cliproxyapi/plugins/auto-router/models.yaml --openrouter-key-env OPENROUTER_API_KEY
+EnvironmentFile=/home/hermes/cliproxyapi-test/env
+ExecStart=/home/hermes/.local/bin/uv run --with pyyaml --with pyarrow --python 3.12 python -m updater --catalog http://127.0.0.1:8318 --catalog-key-file /home/hermes/cliproxyapi-test/api-key --tiers table/tiers.yaml --out /home/hermes/cliproxyapi-test/plugins/auto-router/models.yaml --openrouter-key-env OPENROUTER_API_KEY
 ```
 
 (`--catalog-key-file` reads the proxy key from a 0600 file; add this flag in `__main__.py` alongside `--catalog-key-env`.) `systemd/cpa-auto-router-update.timer`:
@@ -1061,6 +1059,8 @@ Expected: run completes exit 0, summary line, `models.yaml` mtime updated, plugi
 
 - [ ] **Step 5: README + commit + push**
 
+README must state: everything above ran against the TEST instance (8318). Production rollout is Task 10 and is done by the operator.
+
 README: what it is, install (3 commands), config keys, `tiers.yaml` ownership, updater, timer, "Verified" section with the two log lines, known limits (`X-Auto-Router` needs `passthrough-headers: true`; session state lost on restart; `Available` not wired).
 
 ```bash
@@ -1070,6 +1070,47 @@ gh repo create kamushadenes/cpa-plugin-auto-router --private --source=. --push
 ```
 
 ---
+
+
+---
+
+### Task 10: Production rollout (OPERATOR-GATED — do not execute; write the runbook only)
+
+**Files:**
+- Create: `docs/runbook-production.md`
+
+The worker writes the runbook; **the operator runs it**. Production is `cliproxyapi.service` on 8317 — the proxy the orchestrator itself is using. No restart is needed: the proxy hot-reloads `config.yaml` (`sdk/cliproxy/service_config.go:171` → `pluginHost.ApplyConfig`) and picks up new files in `plugins/`.
+
+- [ ] **Step 1: Write `docs/runbook-production.md`** with exactly these steps (commands verbatim):
+
+```bash
+# 1. Binary and table (no restart; the host loads the .so on the next config apply)
+install -m 0644 ~/projects/cpa-plugin-auto-router/bin/auto-router.so ~/cliproxyapi/plugins/auto-router.so
+mkdir -p ~/cliproxyapi/plugins/auto-router
+install -m 0644 ~/cliproxyapi-test/plugins/auto-router/models.yaml ~/cliproxyapi/plugins/auto-router/models.yaml
+
+# 2. Secret for the plugin: single-key env file, 0600, file-to-file copy
+grep -E '^OPENROUTER_API_KEY=' ~/.hermes/.env > ~/cliproxyapi/plugins/auto-router/env && chmod 600 ~/cliproxyapi/plugins/auto-router/env
+# add to ~/.config/systemd/user/cliproxyapi.service [Service]:  EnvironmentFile=-/home/hermes/cliproxyapi/plugins/auto-router/env
+# systemctl --user daemon-reload   ← does NOT restart; the env line takes effect on the NEXT restart,
+# so until then the plugin runs with jev-unavailable (routine/high) — still functional. Schedule the
+# restart for a quiet moment.
+
+# 3. Enable in config.yaml (hot-reloaded): set plugins.enabled: true, replace the `example` entry with
+#     auto-router: {enabled: true, priority: 10, jev_api_key_env: OPENROUTER_API_KEY,
+#                   table_path: /home/hermes/cliproxyapi/plugins/auto-router/models.yaml}
+# 4. Verify without restart
+journalctl --user -u cliproxyapi -n 40 --no-pager | grep -i "auto-router"
+curl -s -H "Authorization: Bearer $KEY" http://127.0.0.1:8317/v1/models | grep -o '"auto-router"'
+
+# 5. Point the weekly timer at production: edit ~/.config/systemd/user/cpa-auto-router-update.service
+#    --catalog http://127.0.0.1:8317 --catalog-key-file <0600 file with the 8317 key>
+#    --out /home/hermes/cliproxyapi/plugins/auto-router/models.yaml ; daemon-reload.
+
+# Rollback: set auto-router.enabled: false in config.yaml (hot-reload) — no restart.
+```
+
+- [ ] **Step 2: Commit** — `git add docs/runbook-production.md && git commit -m "docs: production rollout runbook (operator-gated)"`.
 
 ## Self-review
 
