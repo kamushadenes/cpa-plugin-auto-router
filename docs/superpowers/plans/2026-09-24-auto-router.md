@@ -33,7 +33,7 @@
 
 ```
 cpa-plugin-auto-router/
-├── go.mod, go.sum                       module github.com/kamushadenes/cpa-plugin-auto-router
+├── go.mod, go.sum                       module github.com/chloeassistant/cpa-plugin-auto-router
 ├── Makefile                             build .so, test, install to ~/cliproxyapi/plugins
 ├── main.go                              cgo exports + method dispatch (thin)
 ├── host.go                              callHost, envelopes, host.log, host.model.* wrappers
@@ -129,12 +129,12 @@ cd /home/hermes/projects/cpa-plugin-auto-router && git add docs/superpowers/plan
 - Create: `go.mod`, `Makefile`, `table/tiers.yaml`, `.gitignore`
 
 **Interfaces:**
-- Produces: module path `github.com/kamushadenes/cpa-plugin-auto-router`; `make build` → `bin/auto-router.so`; `make test`; `make install` copies to `/home/hermes/cliproxyapi/plugins/auto-router.so`.
+- Produces: module path `github.com/chloeassistant/cpa-plugin-auto-router`; `make build` → `bin/auto-router.so`; `make test`; `make install` copies to `/home/hermes/cliproxyapi/plugins/auto-router.so`.
 
 - [ ] **Step 1: go.mod with local replace**
 
 ```
-module github.com/kamushadenes/cpa-plugin-auto-router
+module github.com/chloeassistant/cpa-plugin-auto-router
 
 go 1.27
 
@@ -483,7 +483,7 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/kamushadenes/cpa-plugin-auto-router/internal/table"
+	"github.com/chloeassistant/cpa-plugin-auto-router/internal/table"
 )
 
 var effortRank = map[string]int{"low": 0, "medium": 1, "high": 2, "xhigh": 3, "max": 4}
@@ -1066,7 +1066,7 @@ README: what it is, install (3 commands), config keys, `tiers.yaml` ownership, u
 ```bash
 git add table/models.yaml systemd README.md internal/table/testdata/generated.yaml
 git commit -m "feat: seed table, systemd timer, install and smoke-verified end to end"
-gh repo create kamushadenes/cpa-plugin-auto-router --private --source=. --push
+git push -u origin main   # remote already exists: git@github.com:chloeassistant/cpa-plugin-auto-router.git
 ```
 
 ---
