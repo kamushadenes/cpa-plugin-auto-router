@@ -5,6 +5,7 @@ A native CLIProxyAPI plugin that exposes `auto-router`. It sends a bounded snipp
 ## TEST verification
 
 Task9 was run against the TEST proxy on port 8318. Production (`cliproxyapi.service`, port 8317) was not changed. Production rollout is an operator-run Task10 step.
+Production rollout is operator-run; see [`docs/runbook-production.md`](docs/runbook-production.md).
 
 ## Install
 

@@ -1081,7 +1081,7 @@ git push -u origin main   # remote already exists: git@github.com:chloeassistant
 
 The worker writes the runbook; **the operator runs it**. Production is `cliproxyapi.service` on 8317 — the proxy the orchestrator itself is using. No restart is needed: the proxy hot-reloads `config.yaml` (`sdk/cliproxy/service_config.go:171` → `pluginHost.ApplyConfig`) and picks up new files in `plugins/`.
 
-- [ ] **Step 1: Write `docs/runbook-production.md`** with exactly these steps (commands verbatim):
+- [x] **Step 1: Write `docs/runbook-production.md`** with exactly these steps (commands verbatim):
 
 ```bash
 # 1. Binary and table (no restart; the host loads the .so on the next config apply)
@@ -1110,7 +1110,7 @@ curl -s -H "Authorization: Bearer $KEY" http://127.0.0.1:8317/v1/models | grep -
 # Rollback: set auto-router.enabled: false in config.yaml (hot-reload) — no restart.
 ```
 
-- [ ] **Step 2: Commit** — `git add docs/runbook-production.md && git commit -m "docs: production rollout runbook (operator-gated)"`.
+- [x] **Step 2: Commit** — `git add docs/runbook-production.md && git commit -m "docs: production rollout runbook (operator-gated)"`.
 
 ## Self-review
 
