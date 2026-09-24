@@ -158,5 +158,6 @@ func (w *Watched) Get() *Table {
 		return w.cur
 	}
 	w.cur = t
+	log.Printf("auto-router table reloaded path=%s", w.path)
 	return w.cur
 }

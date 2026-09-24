@@ -263,3 +263,18 @@ func TestNextKeepPreservesRaisedTier(t *testing.T) {
 		t.Fatalf("keep must preserve actual stored tier: %+v", d)
 	}
 }
+
+func TestNextJevUnavailableVisionSwapPreservesState(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"blind": mkv("mid", 1, false, nil),
+		"eyes":  mkv("mid", 2, true, nil),
+	})
+	prev := State{Difficulty: Routine, Model: "blind", Thinking: "high", Tier: "mid"}
+	d, err := Next(Input{Table: tb, Category: "writing", Difficulty: Routine, HasImage: true}, prev, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Reason != "vision-swap" || d.Model != "eyes" || d.Tier != "mid" || d.State.Difficulty != Routine || d.Thinking != "high" {
+		t.Fatalf("Jev outage must preserve state while swapping vision model: %+v", d)
+	}
+}

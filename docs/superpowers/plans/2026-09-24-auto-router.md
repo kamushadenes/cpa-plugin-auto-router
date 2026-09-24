@@ -971,7 +971,7 @@ def test_validate_rejects_missing_date(tmp_path):
 **Files:**
 - Create: `table/models.yaml` (generated), `systemd/cpa-auto-router-update.service`, `systemd/cpa-auto-router-update.timer`, `README.md`
 
-- [ ] **Step 1: Generate the seed table against the live proxy**
+- [x] **Step 1: Generate the seed table against the live proxy**
 
 ```bash
 cd /home/hermes/projects/cpa-plugin-auto-router
@@ -984,7 +984,7 @@ uv run --with pyyaml --with pyarrow --python 3.12 python -m updater \
 
 Expected: exit 0; summary line; `table/models.yaml` has every tiered model; `journal`-style WARN lines list untiered catalog ids (`abliterated-*`, `gpt-image-*`, `codex-auto-review`, old Claude ids — expected). Then `go test ./internal/table/ -run TestLoadGood` after pointing a copy of the test at the generated file: `cp table/models.yaml internal/table/testdata/generated.yaml` and add `TestLoadGenerated` (Load must succeed).
 
-- [ ] **Step 2: Install plugin + table into the TEST instance**
+- [x] **Step 2: Install plugin + table into the TEST instance**
 
 ```bash
 make install-test            # copies bin/auto-router.so to /home/hermes/cliproxyapi-test/plugins/
@@ -1006,7 +1006,7 @@ Edit `/home/hermes/cliproxyapi-test/config.yaml` `plugins.configs`:
 
 Expected in journal: plugin `auto-router` loaded; `GET http://127.0.0.1:8318/v1/models` lists `auto-router`.
 
-- [ ] **Step 3: Smoke — trivial and hard, chat and Responses**
+- [x] **Step 3: Smoke — trivial and hard, chat and Responses**
 
 ```bash
 KEY=$(cat /home/hermes/cliproxyapi-test/api-key)
@@ -1021,7 +1021,7 @@ Expected: first → 200 with an answer, log line `difficulty=trivial tier=flash 
 
 Then send a **second** trivial turn with the same `prompt_cache_key` as the hard one → log `reason=keep`, same model (only-escalate).
 
-- [ ] **Step 4: systemd timer**
+- [x] **Step 4: systemd timer**
 
 `systemd/cpa-auto-router-update.service`:
 
@@ -1057,7 +1057,7 @@ systemctl --user start cpa-auto-router-update.service && journalctl --user -u cp
 
 Expected: run completes exit 0, summary line, `models.yaml` mtime updated, plugin log shows table reload on next decision (no restart).
 
-- [ ] **Step 5: README + commit + push**
+- [x] **Step 5: README + commit + push**
 
 README must state: everything above ran against the TEST instance (8318). Production rollout is Task 10 and is done by the operator.
 

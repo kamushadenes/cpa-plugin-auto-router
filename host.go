@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/session"
@@ -17,6 +18,57 @@ import (
 type hostModelExecutionRequest struct {
 	pluginapi.HostModelExecutionRequest
 	HostCallbackID string `json:"host_callback_id,omitempty"`
+}
+
+type pluginStreamLifecycle struct {
+	mu       sync.Mutex
+	active   int
+	closing  bool
+	done     chan struct{}
+	doneOnce bool
+}
+
+func newPluginStreamLifecycle() *pluginStreamLifecycle {
+	return &pluginStreamLifecycle{done: make(chan struct{})}
+}
+
+var streamLifecycle = newPluginStreamLifecycle()
+
+func beginPluginStream() bool {
+	streamLifecycle.mu.Lock()
+	defer streamLifecycle.mu.Unlock()
+	if streamLifecycle.closing {
+		return false
+	}
+	streamLifecycle.active++
+	return true
+}
+
+func endPluginStream() {
+	streamLifecycle.mu.Lock()
+	defer streamLifecycle.mu.Unlock()
+	if streamLifecycle.active > 0 {
+		streamLifecycle.active--
+	}
+	if streamLifecycle.closing && streamLifecycle.active == 0 && !streamLifecycle.doneOnce {
+		close(streamLifecycle.done)
+		streamLifecycle.doneOnce = true
+	}
+}
+
+func beginPluginShutdown() <-chan struct{} {
+	streamLifecycle.mu.Lock()
+	defer streamLifecycle.mu.Unlock()
+	streamLifecycle.closing = true
+	if streamLifecycle.active == 0 && !streamLifecycle.doneOnce {
+		close(streamLifecycle.done)
+		streamLifecycle.doneOnce = true
+	}
+	return streamLifecycle.done
+}
+
+func waitPluginShutdown(done <-chan struct{}) {
+	<-done
 }
 
 func execute(raw []byte) ([]byte, error) {
@@ -69,12 +121,17 @@ func executeStream(raw []byte) ([]byte, error) {
 	if streamID == "" {
 		return errorEnvelope("executor_error", "stream_id is required for executor.execute_stream"), nil
 	}
+	if !beginPluginStream() {
+		return errorEnvelope("executor_error", "plugin is shutting down"), nil
+	}
 	decision, err := decisionForExecutor(req)
 	if err != nil {
+		endPluginStream()
 		return errorEnvelope("executor_error", err.Error()), nil
 	}
 	model := routedModel(decision)
 	go func() {
+		defer endPluginStream()
 		if err := forwardStream(context.Background(), req, streamID, model, decision); err != nil {
 			closePluginStream(streamID, err.Error())
 			return

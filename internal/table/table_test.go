@@ -77,3 +77,9 @@ func TestWatchKeepsOldOnBadReload(t *testing.T) {
 		t.Fatal("bad reload must keep previous table")
 	}
 }
+
+func TestLoadGenerated(t *testing.T) {
+	if _, err := Load("testdata/generated.yaml"); err != nil {
+		t.Fatalf("generated table: %v", err)
+	}
+}

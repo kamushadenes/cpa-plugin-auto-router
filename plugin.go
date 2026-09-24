@@ -365,7 +365,11 @@ func routeResponse(callbackID, sid string, decision decide.Decision, meta routeM
 		"reason":       decision.Reason,
 		"jev_ms":       meta.jevMillis,
 	}
-	hostLog(callbackID, "info", "auto-router decision", fields)
+	payload, err := json.Marshal(fields)
+	if err != nil {
+		return nil, err
+	}
+	hostLog(callbackID, "info", "auto-router decision "+string(payload), fields)
 	return okEnvelope(pluginapi.ModelRouteResponse{Handled: true, TargetKind: pluginapi.ModelRouteTargetSelf, Reason: decision.Reason})
 }
 

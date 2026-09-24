@@ -315,12 +315,7 @@ func Next(in Input, prev State, jevOK bool) (Decision, error) {
 	}
 
 	wrap := func(choice Choice, reason, difficulty string) Decision {
-		state := State{
-			Difficulty: difficulty,
-			Model:      choice.Model,
-			Thinking:   choice.Thinking,
-			Tier:       choice.Tier,
-		}
+		state := State{Difficulty: difficulty, Model: choice.Model, Thinking: choice.Thinking, Tier: choice.Tier}
 		return Decision{Choice: choice, Reason: reason, State: state}
 	}
 	keep := func(reason string) Decision {
@@ -329,6 +324,30 @@ func Next(in Input, prev State, jevOK bool) (Decision, error) {
 		state.Tier = prevTier
 		state.Thinking = prevThinking
 		return Decision{Choice: choice, Reason: reason, State: state}
+	}
+
+	if hasPrev && in.Available != nil && !in.Available(prev.Model) {
+		difficulty := prev.Difficulty
+		if Rank(in.Difficulty) > Rank(prev.Difficulty) {
+			difficulty = in.Difficulty
+		}
+		tier := maxTier(prevTier, TierOf(difficulty))
+		choice, err := chooseAtOrAbove(in, tier, ThinkingOf(difficulty))
+		if err != nil {
+			return Decision{}, err
+		}
+		return wrap(choice, "fallback", difficulty), nil
+	}
+
+	if hasPrev && in.HasImage && !in.Table.Models[prev.Model].Vision {
+		choice, err := chooseAtOrAbove(in, prevTier, prevThinking)
+		if err != nil {
+			return Decision{}, err
+		}
+		choice.Thinking = prevThinking
+		decision := wrap(choice, "vision-swap", prev.Difficulty)
+		decision.State.Difficulty = prev.Difficulty
+		return decision, nil
 	}
 
 	if !jevOK {
@@ -348,31 +367,6 @@ func Next(in Input, prev State, jevOK bool) (Decision, error) {
 			return Decision{}, err
 		}
 		return wrap(choice, "new", in.Difficulty), nil
-	}
-
-	if in.Available != nil && !in.Available(prev.Model) {
-		difficulty := prev.Difficulty
-		if Rank(in.Difficulty) > Rank(prev.Difficulty) {
-			difficulty = in.Difficulty
-		}
-		tier := maxTier(prevTier, TierOf(difficulty))
-		thinking := ThinkingOf(difficulty)
-		choice, err := chooseAtOrAbove(in, tier, thinking)
-		if err != nil {
-			return Decision{}, err
-		}
-		return wrap(choice, "fallback", difficulty), nil
-	}
-
-	if in.HasImage && !in.Table.Models[prev.Model].Vision {
-		choice, err := chooseAtOrAbove(in, prevTier, prevThinking)
-		if err != nil {
-			return Decision{}, err
-		}
-		choice.Thinking = prevThinking
-		decision := wrap(choice, "vision-swap", prev.Difficulty)
-		decision.State.Difficulty = prev.Difficulty
-		return decision, nil
 	}
 
 	if Rank(in.Difficulty) <= Rank(prev.Difficulty) {
