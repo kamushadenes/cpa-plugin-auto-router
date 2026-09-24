@@ -606,7 +606,7 @@ Rules (spec "Sessão e escalada"):
 6. same tier → keep model, thinking = `ThinkingOf(new)`, reason `escalate-thinking`.
 7. higher tier → `Choose` with new difficulty and this turn's category, reason `escalate-tier`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```go
 func TestNextNewThenKeep(t *testing.T) {
@@ -654,9 +654,9 @@ func TestNextFallbackWhenStoredUnavailable(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run, expect failure** (`undefined: Next`).
+- [x] **Step 2: Run, expect failure** (`undefined: Next`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 func Next(in Input, prev State, jevOK bool) (Decision, error) {
@@ -710,9 +710,9 @@ func Next(in Input, prev State, jevOK bool) (Decision, error) {
 
 (`vision-swap` calls `Choose` at the previous difficulty, whose tier equals `prev.Tier`; `Choose` only raises when that tier has no vision candidate — spec-consistent.)
 
-- [ ] **Step 4: Run tests, expect PASS** — `go test ./internal/decide/ -v`.
+- [x] **Step 4: Run tests, expect PASS** — `go test ./internal/decide/ -v`.
 
-- [ ] **Step 5: Commit** — `git commit -am "feat(decide): per-turn escalation rules (only-escalate, vision-swap, fallback, jev-unavailable)"`.
+- [x] **Step 5: Commit** — `git commit -am "feat(decide): per-turn escalation rules (only-escalate, vision-swap, fallback, jev-unavailable)"`.
 
 ---
 

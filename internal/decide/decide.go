@@ -162,6 +162,11 @@ func Choose(in Input) (Choice, error) {
 	if tier == "" || thinking == "" {
 		return Choice{}, errors.New("unknown difficulty")
 	}
+	return chooseAtOrAbove(in, tier, thinking)
+}
+
+func chooseAtOrAbove(in Input, startTier, thinking string) (Choice, error) {
+	tier := startTier
 	reason := "ranked"
 	for {
 		candidates := candidates(in, tier)
@@ -283,4 +288,129 @@ func candidates(in Input, tier string) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+type State struct {
+	Difficulty string
+	Model      string
+	Thinking   string
+	Tier       string
+}
+
+type Decision struct {
+	Choice
+	Reason string
+	State  State
+}
+
+func Next(in Input, prev State, jevOK bool) (Decision, error) {
+	hasPrev := prev.Model != ""
+	prevTier := prev.Tier
+	if prevTier == "" {
+		prevTier = TierOf(prev.Difficulty)
+	}
+	prevThinking := prev.Thinking
+	if prevThinking == "" {
+		prevThinking = ThinkingOf(prev.Difficulty)
+	}
+
+	wrap := func(choice Choice, reason, difficulty string) Decision {
+		state := State{
+			Difficulty: difficulty,
+			Model:      choice.Model,
+			Thinking:   choice.Thinking,
+			Tier:       choice.Tier,
+		}
+		return Decision{Choice: choice, Reason: reason, State: state}
+	}
+	keep := func(reason string) Decision {
+		choice := Choice{Model: prev.Model, Tier: prevTier, Thinking: prevThinking}
+		state := prev
+		state.Tier = prevTier
+		state.Thinking = prevThinking
+		return Decision{Choice: choice, Reason: reason, State: state}
+	}
+
+	if !jevOK {
+		if hasPrev {
+			return keep("jev-unavailable"), nil
+		}
+		in.Difficulty, in.Category = Routine, ""
+		choice, err := Choose(in)
+		if err != nil {
+			return Decision{}, err
+		}
+		return wrap(choice, "jev-unavailable", Routine), nil
+	}
+	if !hasPrev {
+		choice, err := Choose(in)
+		if err != nil {
+			return Decision{}, err
+		}
+		return wrap(choice, "new", in.Difficulty), nil
+	}
+
+	if in.Available != nil && !in.Available(prev.Model) {
+		difficulty := prev.Difficulty
+		if Rank(in.Difficulty) > Rank(prev.Difficulty) {
+			difficulty = in.Difficulty
+		}
+		tier := maxTier(prevTier, TierOf(difficulty))
+		thinking := ThinkingOf(difficulty)
+		choice, err := chooseAtOrAbove(in, tier, thinking)
+		if err != nil {
+			return Decision{}, err
+		}
+		return wrap(choice, "fallback", difficulty), nil
+	}
+
+	if in.HasImage && !in.Table.Models[prev.Model].Vision {
+		choice, err := chooseAtOrAbove(in, prevTier, prevThinking)
+		if err != nil {
+			return Decision{}, err
+		}
+		choice.Thinking = prevThinking
+		decision := wrap(choice, "vision-swap", prev.Difficulty)
+		decision.State.Difficulty = prev.Difficulty
+		return decision, nil
+	}
+
+	if Rank(in.Difficulty) <= Rank(prev.Difficulty) {
+		return keep("keep"), nil
+	}
+
+	targetTier := maxTier(prevTier, TierOf(in.Difficulty))
+	if targetTier == prevTier {
+		decision := keep("escalate-thinking")
+		decision.Thinking = ThinkingOf(in.Difficulty)
+		decision.State.Thinking = decision.Thinking
+		decision.State.Difficulty = in.Difficulty
+		return decision, nil
+	}
+
+	choice, err := Choose(in)
+	if err != nil {
+		return Decision{}, err
+	}
+	return wrap(choice, "escalate-tier", in.Difficulty), nil
+}
+
+func maxTier(a, b string) string {
+	if tierRank(a) >= tierRank(b) {
+		return a
+	}
+	return b
+}
+
+func tierRank(tier string) int {
+	switch tier {
+	case "flash":
+		return 0
+	case "mid":
+		return 1
+	case "top":
+		return 2
+	default:
+		return -1
+	}
 }

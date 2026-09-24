@@ -164,3 +164,102 @@ func TestTierRaisePreservesReasonWhenUnscored(t *testing.T) {
 		t.Fatalf("tier raise must survive unscored fallback: %+v", c)
 	}
 }
+func TestNextNewThenKeep(t *testing.T) {
+	tb := tbl(map[string]table.Model{"a": mk("mid", 5, s("arena-coding", "", 1500, 5))})
+	d, _ := Next(Input{Table: tb, Category: "backend", Difficulty: Routine}, State{}, true)
+	if d.Reason != "new" || d.State.Model != "a" {
+		t.Fatalf("%+v", d)
+	}
+	d2, _ := Next(Input{Table: tb, Category: "webdev", Difficulty: Trivial}, d.State, true)
+	if d2.Reason != "keep" || d2.Model != "a" || d2.Thinking != "high" {
+		t.Fatalf("never downgrade: %+v", d2)
+	}
+}
+
+func TestNextEscalateThinkingSameTier(t *testing.T) {
+	tb := tbl(map[string]table.Model{"a": mk("top", 5, s("arena-coding", "", 1500, 5)), "b": mk("top", 1, s("arena-coding", "", 1600, 5))})
+	prev := State{Difficulty: Hard, Model: "a", Thinking: "xhigh", Tier: "top"}
+	d, _ := Next(Input{Table: tb, Category: "backend", Difficulty: Extreme}, prev, true)
+	if d.Reason != "escalate-thinking" || d.Model != "a" || d.Thinking != "max" {
+		t.Fatalf("%+v", d)
+	}
+}
+
+func TestNextEscalateTierRechooses(t *testing.T) {
+	tb := tbl(map[string]table.Model{"m": mk("mid", 5, s("arena-coding", "", 1500, 5)), "t": mk("top", 50, s("arena-coding", "", 1700, 5))})
+	prev := State{Difficulty: Routine, Model: "m", Thinking: "high", Tier: "mid"}
+	d, _ := Next(Input{Table: tb, Category: "backend", Difficulty: Hard}, prev, true)
+	if d.Reason != "escalate-tier" || d.Model != "t" || d.Thinking != "xhigh" {
+		t.Fatalf("%+v", d)
+	}
+}
+
+func TestNextVisionSwapStaysInTier(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"blind": mkv("mid", 1, false, s("arena-overall", "", 1500, 5)),
+		"eyes":  mkv("mid", 5, true, s("arena-overall", "", 1450, 5)),
+		"top":   mkv("top", 50, true, s("arena-overall", "", 1800, 5)),
+	})
+	prev := State{Difficulty: Routine, Model: "blind", Thinking: "high", Tier: "mid"}
+	d, _ := Next(Input{Table: tb, Category: "writing", Difficulty: Routine, HasImage: true}, prev, true)
+	if d.Reason != "vision-swap" || d.Model != "eyes" || d.Thinking != "high" {
+		t.Fatalf("%+v", d)
+	}
+}
+
+func TestNextJevUnavailable(t *testing.T) {
+	tb := tbl(map[string]table.Model{"m": mk("mid", 5, s("arena-overall", "", 1500, 5))})
+	d, _ := Next(Input{Table: tb}, State{}, false)
+	if d.Reason != "jev-unavailable" || d.State.Difficulty != Routine {
+		t.Fatalf("%+v", d)
+	}
+	prev := State{Difficulty: Hard, Model: "x", Thinking: "xhigh", Tier: "top"}
+	d, _ = Next(Input{Table: tb}, prev, false)
+	if d.Reason != "jev-unavailable" || d.Model != "x" {
+		t.Fatalf("%+v", d)
+	}
+}
+
+func TestNextFallbackWhenStoredUnavailable(t *testing.T) {
+	tb := tbl(map[string]table.Model{"a": mk("mid", 5, s("arena-overall", "", 1500, 5)), "b": mk("mid", 5, s("arena-overall", "", 1400, 5))})
+	prev := State{Difficulty: Routine, Model: "a", Thinking: "high", Tier: "mid"}
+	d, _ := Next(Input{Table: tb, Category: "writing", Difficulty: Trivial, Available: func(m string) bool { return m != "a" }}, prev, true)
+	if d.Reason != "fallback" || d.Model != "b" {
+		t.Fatalf("%+v", d)
+	}
+}
+
+func TestNextFallbackHonorsRaisedTier(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"flash": mk("flash", 1, nil),
+		"old":   mk("mid", 2, nil),
+		"new":   mk("mid", 3, nil),
+	})
+	prev := State{Difficulty: Trivial, Model: "old", Thinking: "low", Tier: "mid"}
+	d, _ := Next(Input{Table: tb, Difficulty: Trivial, Available: func(m string) bool { return m != "old" }}, prev, true)
+	if d.Reason != "fallback" || d.Model != "new" || d.Tier != "mid" {
+		t.Fatalf("fallback must not lower a raised tier: %+v", d)
+	}
+}
+
+func TestNextVisionSwapHonorsRaisedTier(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"flash": mkv("flash", 1, true, nil),
+		"blind": mkv("mid", 2, false, nil),
+		"eyes":  mkv("mid", 3, true, nil),
+	})
+	prev := State{Difficulty: Trivial, Model: "blind", Thinking: "low", Tier: "mid"}
+	d, _ := Next(Input{Table: tb, Difficulty: Trivial, HasImage: true}, prev, true)
+	if d.Reason != "vision-swap" || d.Model != "eyes" || d.Tier != "mid" {
+		t.Fatalf("vision swap must not lower a raised tier: %+v", d)
+	}
+}
+
+func TestNextKeepPreservesRaisedTier(t *testing.T) {
+	tb := tbl(map[string]table.Model{"old": mk("top", 2, nil)})
+	prev := State{Difficulty: Routine, Model: "old", Thinking: "high", Tier: "top"}
+	d, _ := Next(Input{Table: tb, Difficulty: Routine}, prev, true)
+	if d.Reason != "keep" || d.Model != "old" || d.Tier != "top" {
+		t.Fatalf("keep must preserve actual stored tier: %+v", d)
+	}
+}
