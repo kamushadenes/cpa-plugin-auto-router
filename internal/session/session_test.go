@@ -1,0 +1,68 @@
+package session
+
+import (
+	"net/http"
+	"testing"
+	"time"
+
+	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
+)
+
+func TestIDPrecedence(t *testing.T) {
+	h := http.Header{"X-Session-Id": {"abc"}}
+	if ID(h, []byte(`{"prompt_cache_key":"pck"}`)) != "abc" {
+		t.Fatal("header wins")
+	}
+	if ID(nil, []byte(`{"prompt_cache_key":"pck"}`)) != "pck" {
+		t.Fatal("prompt_cache_key")
+	}
+	a := ID(nil, []byte(`{"messages":[{"role":"system","content":"s"},{"role":"user","content":"hello"}]}`))
+	b := ID(nil, []byte(`{"messages":[{"role":"system","content":"s"},{"role":"user","content":"hello"},{"role":"assistant","content":"x"}]}`))
+	if a == "" || a != b {
+		t.Fatalf("first-user hash must be stable across turns: %q %q", a, b)
+	}
+	r := ID(nil, []byte(`{"input":[{"role":"user","content":[{"type":"input_text","text":"hello"}]}]}`))
+	if r == "" {
+		t.Fatal("responses input must hash")
+	}
+}
+
+func TestIDUsesReferenceHeaderOrder(t *testing.T) {
+	h := http.Header{
+		"X-Session-Id":             {"generic"},
+		"Session-Id":               {"codex"},
+		"X-Claude-Code-Session-Id": {"claude"},
+	}
+	if got := ID(h, nil); got != "claude" {
+		t.Fatalf("reference header order = %q", got)
+	}
+	h.Del("X-Claude-Code-Session-Id")
+	if got := ID(h, nil); got != "codex" {
+		t.Fatalf("codex header should beat generic header = %q", got)
+	}
+}
+
+func TestIDDoesNotHashNonUserContent(t *testing.T) {
+	body := []byte(`{"system":"secret system prompt","messages":[{"role":"tool","content":"tool result"}]}`)
+	if got := ID(nil, body); got != "" {
+		t.Fatalf("must not hash system or tool content: %q", got)
+	}
+}
+
+func TestStoreTTLAndEvict(t *testing.T) {
+	s := New(50*time.Millisecond, 2)
+	s.Put("a", decide.State{Model: "m"})
+	if _, ok := s.Get("a"); !ok {
+		t.Fatal("get")
+	}
+	time.Sleep(60 * time.Millisecond)
+	if _, ok := s.Get("a"); ok {
+		t.Fatal("expired")
+	}
+	s.Put("1", decide.State{})
+	s.Put("2", decide.State{})
+	s.Put("3", decide.State{})
+	if _, ok := s.Get("1"); ok {
+		t.Fatal("oldest evicted")
+	}
+}

@@ -740,7 +740,7 @@ func (s *Store) Put(id string, st decide.State)        // evicts oldest when len
 func ID(headers http.Header, body []byte) string
 ```
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```go
 func TestIDPrecedence(t *testing.T) {
@@ -764,13 +764,13 @@ func TestStoreTTLAndEvict(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run, expect failure.**
+- [x] **Step 2: Run, expect failure.**
 
-- [ ] **Step 3: Implement** — `ID` uses `gjson`: headers in order `X-Session-Id`, `X-Session-Affinity`, `X-Client-Request-Id`; then `session_id`, `sessionId`, `prompt_cache_key`, `conversation.id`, `conversation` (string), `metadata.user_id`; else first user text: `messages.#(role=="user").content` (string, or `#.text` joined when array) for chat; `input.#(role=="user").content` same for Responses; `input` as plain string. Hash: `sha256`, hex of first 8 bytes, prefixed `h:`. Store: map + `time.Now()` stamp per entry; eviction is a linear scan for the oldest (`// ponytail: O(n) evict, fine at 65k; heap if it ever shows in a profile`).
+- [x] **Step 3: Implement** — `ID` uses `gjson`: headers in order `X-Session-Id`, `X-Session-Affinity`, `X-Client-Request-Id`; then `session_id`, `sessionId`, `prompt_cache_key`, `conversation.id`, `conversation` (string), `metadata.user_id`; else first user text: `messages.#(role=="user").content` (string, or `#.text` joined when array) for chat; `input.#(role=="user").content` same for Responses; `input` as plain string. Hash: `sha256`, hex of first 8 bytes, prefixed `h:`. Store: map + `time.Now()` stamp per entry; eviction is a linear scan for the oldest (`// ponytail: O(n) evict, fine at 65k; heap if it ever shows in a profile`).
 
-- [ ] **Step 4: Run tests, expect PASS.**
+- [x] **Step 4: Run tests, expect PASS.**
 
-- [ ] **Step 5: Commit** — `git add internal/session && git commit -m "feat(session): TTL state store and host-compatible session id extraction"`.
+- [x] **Step 5: Commit** — `git add internal/session && git commit -m "feat(session): TTL state store and host-compatible session id extraction"`.
 
 ---
 
