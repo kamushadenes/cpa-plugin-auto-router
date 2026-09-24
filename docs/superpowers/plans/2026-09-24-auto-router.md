@@ -864,11 +864,11 @@ Registration capabilities: `model_registrar:true, model_router:true, executor:tr
 
 `execute(raw)` / `executeStream(raw)`: unmarshal `rpcExecutorRequest`; look up `d` in `pending` by `Metadata["request_id"]`/session (from `req.Headers` + `req.OriginalRequest`); `model := d.Model + "(" + d.Thinking + ")"`; call `host.model.execute` (non-stream) or the stream-forward loop copied from `examples/.../stream_forward.go:125-180` with `EntryProtocol == ExitProtocol == req.SourceFormat`, `Body: req.OriginalRequest`, `HostCallbackID: req.HostCallbackID`. Response headers: `{"Content-Type": ..., "X-Auto-Router": model+";"+d.Reason}`. If `pending` has no entry (e.g. host restarted mid-flight) → run `routeModel` logic inline once (same function, refactored as `decideFor(headers, body, format) Decision`).
 
-- [ ] **Step 1: Write the one test the shell needs** — `plugin_test.go`: `TestRouteIgnoresOtherModels` (`routeModel` with `RequestedModel:"gpt-6-astra"` → `Handled:false`) and `TestRouteDecidesWithoutJev` (config with `jev_base_url` pointing to a closed port; `RequestedModel:"auto-router"`, chat body → `Handled:true`, `TargetKind:"self"`, `Reason:"jev-unavailable"`, and `pending` holds a model from the seed table). Use `table/models.yaml` from Task 10's seed (write a minimal seed now in `testdata/`).
+- [x] **Step 1: Write the one test the shell needs** — `plugin_test.go`: `TestRouteIgnoresOtherModels` (`routeModel` with `RequestedModel:"gpt-6-astra"` → `Handled:false`) and `TestRouteDecidesWithoutJev` (config with `jev_base_url` pointing to a closed port; `RequestedModel:"auto-router"`, chat body → `Handled:true`, `TargetKind:"self"`, `Reason:"jev-unavailable"`, and `pending` holds a model from the seed table). Use `table/models.yaml` from Task 10's seed (write a minimal seed now in `testdata/`).
 
-- [ ] **Step 2: Run, expect failure.**
+- [x] **Step 2: Run, expect failure.**
 
-- [ ] **Step 3: Implement** `host.go` (envelope types, `callHost`, `hostLog`, `hostModelExecute`, `hostModelStreamForward`, `emitPluginStreamChunk`, `closePluginStream` — all copied from the example, renamed to drop the Claude-specific parts) and `plugin.go` as specified. `configure` parses `config_yaml` into:
+- [x] **Step 3: Implement** `host.go` (envelope types, `callHost`, `hostLog`, `hostModelExecute`, `hostModelStreamForward`, `emitPluginStreamChunk`, `closePluginStream` — all copied from the example, renamed to drop the Claude-specific parts) and `plugin.go` as specified. `configure` parses `config_yaml` into:
 
 ```go
 type pluginConfig struct {
@@ -886,9 +886,9 @@ type pluginConfig struct {
 
 with defaults applied when zero, `table.Watch(TablePath)` opened on configure (error → plugin registers but `routeModel` returns `Handled:false` and logs once).
 
-- [ ] **Step 4: Build and test** — `make build && go test ./...`. Expected: `bin/auto-router.so` exists; tests pass.
+- [x] **Step 4: Build and test** — `make build && go test ./...`. Expected: `bin/auto-router.so` exists; tests pass.
 
-- [ ] **Step 5: Commit** — `git add main.go host.go plugin.go plugin_test.go testdata && git commit -m "feat(plugin): register auto-router, route via Jev+table, execute through host.model.*"`.
+- [x] **Step 5: Commit** — `git add main.go host.go plugin.go plugin_test.go testdata && git commit -m "feat(plugin): register auto-router, route via Jev+table, execute through host.model.*"`.
 
 ---
 

@@ -1,0 +1,409 @@
+package main
+
+import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"net/http"
+	"os"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
+	"github.com/chloeassistant/cpa-plugin-auto-router/internal/jev"
+	"github.com/chloeassistant/cpa-plugin-auto-router/internal/session"
+	"github.com/chloeassistant/cpa-plugin-auto-router/internal/snippet"
+	"github.com/chloeassistant/cpa-plugin-auto-router/internal/table"
+	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
+	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"gopkg.in/yaml.v3"
+)
+
+const pluginIdentifier = "auto-router"
+
+type lifecycleRequest struct {
+	ConfigYAML []byte `json:"config_yaml"`
+}
+
+type pluginConfig struct {
+	Enabled             bool    `yaml:"enabled"`
+	JevAPIKeyEnv        string  `yaml:"jev_api_key_env"`
+	JevBaseURL          string  `yaml:"jev_base_url"`
+	JevEndpointPath     string  `yaml:"jev_endpoint_path"`
+	JevModel            string  `yaml:"jev_model"`
+	ConfidenceThreshold float64 `yaml:"confidence_threshold"`
+	TablePath           string  `yaml:"table_path"`
+	SnippetChars        int     `yaml:"snippet_chars"`
+	JevTimeoutMS        int     `yaml:"jev_timeout_ms"`
+}
+
+type registration struct {
+	SchemaVersion uint32                 `json:"schema_version"`
+	Metadata      pluginapi.Metadata     `json:"metadata"`
+	Capabilities  registrationCapability `json:"capabilities"`
+}
+
+type registrationCapability struct {
+	ModelRegistrar        bool     `json:"model_registrar"`
+	ModelRouter           bool     `json:"model_router"`
+	Executor              bool     `json:"executor"`
+	ExecutorModelScope    string   `json:"executor_model_scope"`
+	ExecutorInputFormats  []string `json:"executor_input_formats"`
+	ExecutorOutputFormats []string `json:"executor_output_formats"`
+}
+
+type rpcExecutorRequest struct {
+	pluginapi.ExecutorRequest
+	StreamID       string `json:"stream_id,omitempty"`
+	HostCallbackID string `json:"host_callback_id,omitempty"`
+}
+
+type rpcModelRouteRequest struct {
+	pluginapi.ModelRouteRequest
+	HostCallbackID string `json:"host_callback_id,omitempty"`
+}
+
+type rpcStreamEmitRequest struct {
+	StreamID string `json:"stream_id"`
+	Payload  []byte `json:"payload,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+type rpcStreamCloseRequest struct {
+	StreamID string `json:"stream_id"`
+	Error    string `json:"error,omitempty"`
+}
+
+type pluginState struct {
+	mu             sync.RWMutex
+	cfg            pluginConfig
+	watch          *table.Watched
+	tableErr       error
+	tableErrLogged bool
+}
+
+var state pluginState
+var store = session.New(time.Hour, 65536)
+var pending sync.Map
+
+func init() {
+	state.cfg = defaultPluginConfig()
+}
+
+func handleMethod(method string, request []byte) ([]byte, error) {
+	switch method {
+	case pluginabi.MethodPluginRegister, pluginabi.MethodPluginReconfigure:
+		if err := configure(request); err != nil {
+			return nil, err
+		}
+		return okEnvelope(pluginRegistration())
+	case pluginabi.MethodModelRegister, pluginabi.MethodModelStatic:
+		return okEnvelope(modelRegistration())
+	case pluginabi.MethodModelRoute:
+		return routeModel(request)
+	case pluginabi.MethodExecutorIdentifier:
+		return okEnvelope(map[string]string{"identifier": pluginIdentifier})
+	case pluginabi.MethodExecutorExecute:
+		return execute(request)
+	case pluginabi.MethodExecutorExecuteStream:
+		return executeStream(request)
+	case pluginabi.MethodExecutorCountTokens:
+		return okEnvelope(pluginapi.ExecutorResponse{Payload: []byte(`{"input_tokens":0}`)})
+	default:
+		return errorEnvelope("unknown_method", "unknown method: "+method), nil
+	}
+}
+
+func defaultPluginConfig() pluginConfig {
+	return pluginConfig{
+		Enabled:             true,
+		JevAPIKeyEnv:        "OPENROUTER_API_KEY",
+		JevBaseURL:          "https://openrouter.ai",
+		JevEndpointPath:     "/api/alpha/decisions",
+		JevModel:            "typesafe/jev-1.13",
+		ConfidenceThreshold: 0.6,
+		TablePath:           "/home/hermes/cliproxyapi/plugins/auto-router/models.yaml",
+		SnippetChars:        1500,
+		JevTimeoutMS:        2000,
+	}
+}
+
+func configure(raw []byte) error {
+	var req lifecycleRequest
+	if len(raw) > 0 {
+		if err := json.Unmarshal(raw, &req); err != nil {
+			return err
+		}
+	}
+	cfg := defaultPluginConfig()
+	if len(req.ConfigYAML) > 0 {
+		if err := yaml.Unmarshal(req.ConfigYAML, &cfg); err != nil {
+			return err
+		}
+	}
+	if cfg.JevAPIKeyEnv == "" {
+		cfg.JevAPIKeyEnv = "OPENROUTER_API_KEY"
+	}
+	if cfg.JevBaseURL == "" {
+		cfg.JevBaseURL = "https://openrouter.ai"
+	}
+	if cfg.JevEndpointPath == "" {
+		cfg.JevEndpointPath = "/api/alpha/decisions"
+	}
+	if cfg.JevModel == "" {
+		cfg.JevModel = "typesafe/jev-1.13"
+	}
+	if cfg.ConfidenceThreshold == 0 {
+		cfg.ConfidenceThreshold = 0.6
+	}
+	if cfg.TablePath == "" {
+		cfg.TablePath = "/home/hermes/cliproxyapi/plugins/auto-router/models.yaml"
+	}
+	if cfg.SnippetChars == 0 {
+		cfg.SnippetChars = 1500
+	}
+	if cfg.JevTimeoutMS == 0 {
+		cfg.JevTimeoutMS = 2000
+	}
+	watch, err := table.Watch(cfg.TablePath)
+	state.mu.Lock()
+	state.cfg = cfg
+	state.watch = watch
+	state.tableErr = err
+	state.tableErrLogged = false
+	state.mu.Unlock()
+	return nil
+}
+
+func loadedConfig() pluginConfig {
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+	return state.cfg
+}
+
+func loadedTable() (*table.Table, error) {
+	state.mu.RLock()
+	watch := state.watch
+	err := state.tableErr
+	state.mu.RUnlock()
+	if watch == nil {
+		if err == nil {
+			err = errors.New("auto-router table is not configured")
+		}
+		return nil, err
+	}
+	return watch.Get(), nil
+}
+
+func pluginRegistration() registration {
+	return registration{
+		SchemaVersion: pluginabi.SchemaVersion,
+		Metadata: pluginapi.Metadata{
+			Name:             "auto-router",
+			Version:          "0.1.0",
+			Author:           "chloeassistant",
+			GitHubRepository: "https://github.com/chloeassistant/cpa-plugin-auto-router",
+			ConfigFields: []pluginapi.ConfigField{
+				{Name: "enabled", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Enable auto-router requests."},
+				{Name: "jev_api_key_env", Type: pluginapi.ConfigFieldTypeString, Description: "Environment variable containing the Jev API key."},
+				{Name: "jev_base_url", Type: pluginapi.ConfigFieldTypeString, Description: "Jev service base URL."},
+				{Name: "jev_endpoint_path", Type: pluginapi.ConfigFieldTypeString, Description: "Jev service endpoint path."},
+				{Name: "jev_model", Type: pluginapi.ConfigFieldTypeString, Description: "Jev model identifier."},
+				{Name: "confidence_threshold", Type: pluginapi.ConfigFieldTypeNumber, Description: "Minimum Jev confidence used for a label."},
+				{Name: "table_path", Type: pluginapi.ConfigFieldTypeString, Description: "Path to the local benchmark table."},
+				{Name: "snippet_chars", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum user snippet size."},
+				{Name: "jev_timeout_ms", Type: pluginapi.ConfigFieldTypeInteger, Description: "Jev request timeout in milliseconds."},
+			},
+		},
+		Capabilities: registrationCapability{
+			ModelRegistrar:        true,
+			ModelRouter:           true,
+			Executor:              true,
+			ExecutorModelScope:    string(pluginapi.ExecutorModelScopeStatic),
+			ExecutorInputFormats:  []string{"chat-completions", "responses"},
+			ExecutorOutputFormats: []string{"chat-completions", "responses"},
+		},
+	}
+}
+
+func modelRegistration() pluginapi.ModelRegistrationResponse {
+	return pluginapi.ModelRegistrationResponse{
+		Provider: pluginIdentifier,
+		Models: []pluginapi.ModelInfo{{
+			ID:                         pluginIdentifier,
+			Object:                     "model",
+			OwnedBy:                    pluginIdentifier,
+			DisplayName:                "Auto Router (Jev)",
+			SupportedGenerationMethods: []string{"chat"},
+			ContextLength:              1000000,
+			UserDefined:                true,
+		}},
+	}
+}
+
+type routeMeta struct {
+	category       string
+	categoryProb   map[string]float64
+	difficulty     string
+	difficultyProb map[string]float64
+	confidence     float64
+	jevMillis      int64
+}
+
+func routeModel(raw []byte) ([]byte, error) {
+	var req rpcModelRouteRequest
+	if err := json.Unmarshal(raw, &req); err != nil {
+		return nil, err
+	}
+	if stripThinkingSuffix(req.RequestedModel) != pluginIdentifier {
+		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
+	}
+	cfg := loadedConfig()
+	if !cfg.Enabled {
+		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
+	}
+	sid := session.ID(req.Headers, req.Body)
+	prev, hasPrev := store.Get(sid)
+	decision, meta, err := decideForWithMeta(req.ModelRouteRequest, prev, hasPrev)
+	if err != nil {
+		state.mu.Lock()
+		tableErr := state.tableErr
+		firstTableErr := tableErr != nil && !state.tableErrLogged
+		if firstTableErr {
+			state.tableErrLogged = true
+		}
+		state.mu.Unlock()
+		if firstTableErr {
+			hostLog(req.HostCallbackID, "error", "auto-router table unavailable", map[string]any{"error": tableErr.Error()})
+		} else if tableErr == nil {
+			hostLog(req.HostCallbackID, "error", "auto-router decision failed", map[string]any{"error": err.Error()})
+		}
+		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
+	}
+	if sid != "" {
+		store.Put(sid, decision.State)
+	}
+	key := requestKey(req.Headers, req.Body, req.Metadata)
+	if key != "" {
+		pending.Store(key, decision)
+	}
+	return routeResponse(req.HostCallbackID, sid, decision, meta)
+}
+
+func decideFor(req pluginapi.ModelRouteRequest, prev decide.State, hasPrev bool) (decide.Decision, error) {
+	decision, _, err := decideForWithMeta(req, prev, hasPrev)
+	return decision, err
+}
+
+func decideForWithMeta(req pluginapi.ModelRouteRequest, prev decide.State, hasPrev bool) (decide.Decision, routeMeta, error) {
+	cfg := loadedConfig()
+	tb, err := loadedTable()
+	if err != nil {
+		return decide.Decision{}, routeMeta{}, err
+	}
+	text, signals := snippet.Extract(req.SourceFormat, req.Body, cfg.SnippetChars)
+	meta := routeMeta{}
+	var category, difficulty string
+	jevOK := false
+	if hasPrev && (prev.Difficulty == decide.Extreme || !signals.HasNewUserMessage) {
+		difficulty = prev.Difficulty
+		jevOK = true
+	} else {
+		difficulty = decide.Routine
+		if hasPrev {
+			difficulty = prev.Difficulty
+		}
+		jevCfg := jev.Config{
+			BaseURL:      cfg.JevBaseURL,
+			EndpointPath: cfg.JevEndpointPath,
+			Model:        cfg.JevModel,
+			APIKey:       os.Getenv(cfg.JevAPIKeyEnv),
+			Timeout:      time.Duration(cfg.JevTimeoutMS) * time.Millisecond,
+		}
+		jevResult, jevErr := jev.Decide(context.Background(), jevCfg, text, signals)
+		if jevErr == nil {
+			jevOK = true
+			meta.categoryProb = jevResult.Category.Probabilities
+			meta.difficultyProb = jevResult.Difficulty.Probabilities
+			meta.confidence = jevResult.Difficulty.Confidence
+			meta.jevMillis = jevResult.Millis
+			if jevResult.Category.Confidence >= cfg.ConfidenceThreshold {
+				category = jevResult.Category.Choice
+				meta.category = category
+			}
+			if jevResult.Difficulty.Confidence >= cfg.ConfidenceThreshold {
+				difficulty = jevResult.Difficulty.Choice
+				meta.difficulty = difficulty
+			}
+		}
+	}
+	if meta.difficulty == "" {
+		meta.difficulty = difficulty
+	}
+	input := decide.Input{Table: tb, Category: category, Difficulty: difficulty, HasImage: signals.Images > 0, Exclude: excluded}
+	decision, err := decide.Next(input, prev, jevOK)
+	if err != nil {
+		return decide.Decision{}, routeMeta{}, err
+	}
+	return decision, meta, nil
+}
+
+func routeResponse(callbackID, sid string, decision decide.Decision, meta routeMeta) ([]byte, error) {
+	fields := map[string]any{
+		"session":      hashSession(sid),
+		"category":     meta.category,
+		"category_p":   meta.categoryProb,
+		"difficulty":   meta.difficulty,
+		"difficulty_p": meta.difficultyProb,
+		"confidence":   meta.confidence,
+		"tier":         decision.Tier,
+		"model":        decision.Model,
+		"thinking":     decision.Thinking,
+		"reason":       decision.Reason,
+		"jev_ms":       meta.jevMillis,
+	}
+	hostLog(callbackID, "info", "auto-router decision", fields)
+	return okEnvelope(pluginapi.ModelRouteResponse{Handled: true, TargetKind: pluginapi.ModelRouteTargetSelf, Reason: decision.Reason})
+}
+
+func requestKey(headers http.Header, body []byte, metadata map[string]any) string {
+	if metadata != nil {
+		if value, ok := metadata["request_id"].(string); ok && strings.TrimSpace(value) != "" {
+			return strings.TrimSpace(value)
+		}
+	}
+	return session.ID(headers, body)
+}
+
+func stripThinkingSuffix(model string) string {
+	model = strings.TrimSpace(model)
+	if open := strings.LastIndexByte(model, '('); open >= 0 && strings.HasSuffix(model, ")") {
+		return strings.TrimSpace(model[:open])
+	}
+	return model
+}
+
+func excluded(model string) bool {
+	model = strings.ToLower(strings.TrimSpace(model))
+	return strings.HasPrefix(model, "gpt-image-") || strings.HasPrefix(model, "abliterated-") || model == "codex-auto-review"
+}
+
+func hashSession(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(raw))
+	return "h:" + hex.EncodeToString(sum[:4])
+}
+
+func hostLog(callbackID, level, message string, fields map[string]any) {
+	_, _ = callHost(pluginabi.MethodHostLog, map[string]any{
+		"host_callback_id": callbackID,
+		"level":            level,
+		"message":          message,
+		"fields":           fields,
+	})
+}
