@@ -412,7 +412,7 @@ Score selection per model: among `Scores[bench]`, take the entry whose effort is
 
 Ranking: winner = max Value; tie if `|a-b| <= max(a.Margin, b.Margin)` → lower `Cost.Input+Cost.Output`. Try benchmarks in order until at least one candidate is scored. No scored candidate → `fallback-unscored`: cheapest candidate. No candidate in tier → raise tier (`mid→top`, `flash→mid`), `Reason="tier-raised"`; top empty → error.
 
-- [ ] **Step 1: Write failing tests** (table built in code with a helper `mk(tier string, cost float64, scores map[string][]table.Score)`)
+- [x] **Step 1: Write failing tests** (table built in code with a helper `mk(tier string, cost float64, scores map[string][]table.Score)`)
 
 ```go
 func TestChooseRankedByCategoryBenchmark(t *testing.T) {
@@ -472,9 +472,9 @@ func TestExtractionPicksCheapestFlash(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run, expect compile failure** — `go test ./internal/decide/`.
+- [x] **Step 2: Run, expect compile failure** — `go test ./internal/decide/`.
 
-- [ ] **Step 3: Implement** (`decide.go`; ≈120 lines)
+- [x] **Step 3: Implement** (`decide.go`; ≈120 lines)
 
 ```go
 package decide
@@ -571,9 +571,9 @@ func candidates(in Input, tier string) []string {
 
 Note the tie loop: after sorting by value desc, a cheaper model within margin of the current winner replaces it; this is the spec's "empate → menor custo". `extraction` has an empty list so it goes straight to `generalFallback`; with flash models typically unscored there, it lands on cheapest — matching the spec.
 
-- [ ] **Step 4: Run tests, expect PASS** — `go test ./internal/decide/ -v`.
+- [x] **Step 4: Run tests, expect PASS** — `go test ./internal/decide/ -v`.
 
-- [ ] **Step 5: Commit** — `git commit -am "feat(decide): choose model by category benchmarks, effort-aware, cost tie-break"`.
+- [x] **Step 5: Commit** — `git commit -am "feat(decide): choose model by category benchmarks, effort-aware, cost tie-break"`.
 
 ---
 
