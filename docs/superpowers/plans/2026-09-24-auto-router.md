@@ -817,15 +817,15 @@ Request body sent by `Decide`:
 
 Response parsing: `answers.category.choice` (string), `answers.category.probabilities` (object) or fallback derive from `choice` = 1.0, `answers.category.confidence` (number, default 0). Any HTTP ≠ 200, JSON error, timeout, response > 1 MB → `ErrUnavailable`.
 
-- [ ] **Step 1: Write failing tests** — snippet: chat body with system+user+assistant+user → returns last user text, `Messages=4`, `HasNewUserMessage=true`; Responses body with `input` array and an `input_image` part → `Images=1`; tool-result-only last message → `HasNewUserMessage=false`; tail truncation at `max`. jev: `httptest.Server` returning a canned answer → `Result` fields; server returning 500 → `ErrUnavailable`; `Validate` rejects `http://example.com`, accepts `http://127.0.0.1:9`, rejects `https://u:p@host`.
+- [x] **Step 1: Write failing tests** — snippet: chat body with system+user+assistant+user → returns last user text, `Messages=4`, `HasNewUserMessage=true`; Responses body with `input` array and an `input_image` part → `Images=1`; tool-result-only last message → `HasNewUserMessage=false`; tail truncation at `max`. jev: `httptest.Server` returning a canned answer → `Result` fields; server returning 500 → `ErrUnavailable`; `Validate` rejects `http://example.com`, accepts `http://127.0.0.1:9`, rejects `https://u:p@host`.
 
-- [ ] **Step 2: Run, expect failure.**
+- [x] **Step 2: Run, expect failure.**
 
-- [ ] **Step 3: Implement** — `snippet` with `gjson` (chat: `messages`; Responses: `input`); `jev` with `net/http` + `context.WithTimeout`, `io.LimitReader(resp.Body, 1<<20)`, `Authorization: Bearer`. URL policy port of `hermes/plugins/jev/client.py:_check_url` using `net/netip` prefixes (`10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.0/8, ::1/128, fc00::/7, fe80::/10`).
+- [x] **Step 3: Implement** — `snippet` with `gjson` (chat: `messages`; Responses: `input`); `jev` with `net/http` + `context.WithTimeout`, `io.LimitReader(resp.Body, 1<<20)`, `Authorization: Bearer`. URL policy port of `hermes/plugins/jev/client.py:_check_url` using `net/netip` prefixes (`10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.0/8, ::1/128, fc00::/7, fe80::/10`).
 
-- [ ] **Step 4: Run tests, expect PASS.**
+- [x] **Step 4: Run tests, expect PASS.**
 
-- [ ] **Step 5: Commit** — `git add internal/snippet internal/jev && git commit -m "feat: request snippet/signals and Jev typed-decision client"`.
+- [x] **Step 5: Commit** — `git add internal/snippet internal/jev && git commit -m "feat: request snippet/signals and Jev typed-decision client"`.
 
 ---
 
