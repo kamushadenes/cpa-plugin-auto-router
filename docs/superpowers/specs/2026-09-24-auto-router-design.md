@@ -144,6 +144,25 @@ entrada em fev/2026, nenhum modelo atual.
 Sem score em nenhum benchmark da lista para os candidatos do tier → Arena
 text `overall` (cobre 19 dos 27 modelos, atualização semanal).
 
+**Onde cada benchmark é lido** (decisão de 2026-09-24, depois de procurar
+agregadores): o updater lê **um agregador primeiro e o site original só
+para o que o agregador não tem**. Fontes, em ordem de preferência:
+
+| fonte | formato | o que cobre | chave |
+|---|---|---|---|
+| `evaleval/EEE_datastore` (HF, Every Eval Ever) | JSON por (fonte, modelo) em schema fixo `0.3.0`, atualizado por cron diário | `vals-ai` → Terminal-Bench 4.0/2.1, SWE-bench (Vals), GPQA, LCB, MMMU, 25/26 do catálogo; `llm-stats` → SWE-bench Pro, SWE-Atlas QnA/Test-Writing, DeepSWE 1.1, FrontierCode, Sec-Bench Pro, ExploitBench, Terminal-Bench 4.0, ~30 dirs do catálogo; `artificial-analysis-llms` → índices + GPQA/HLE/SciCode/preço | não |
+| OpenRouter `GET /api/v1/benchmarks` | um JSON (1.555 linhas, 265 modelos, `as_of` diário) | AA intelligence/coding/agentic index (27/27), GPQA e τ-bench rodados pelo OpenRouter com `stddev`/`n`, Design Arena (website/uicomponent/dataviz, 14 modelos) | `OPENROUTER_API_KEY` (já existe) |
+| Epoch AI `benchmarks_data.zip` | 85 CSVs CC-BY, coluna `Model version` = `id_effort` (ex.: `gpt-6-astra_max`) | DeepSWE (43 linhas nossas, com `95% CI half-width`), CursorBench, FrontierSWE, WebDev Arena, GPQA, MirrorCode — **com effort explícito** | não |
+| Arena parquet (HF) | como antes | text `coding/math/creative_writing/instruction_following/hard_prompts/overall`, WebDev, Agent | não |
+| tbench.ai / Scale (RSC) | como antes | só o que faltar acima (hoje: nada obrigatório — ficam como reserva com fixture) | não |
+
+Cobertura medida no EEE `llm-stats` para o catálogo (2026-09-24): Fable 5.1,
+Opus 5, Sonnet 5, Astra, Kimi K3, MiniMax M3 têm dirs; Sol/Luna/GLM/Qwen/MiMo
+**não** aparecem nesse adapter e vêm do `vals-ai` (que tem 25/26) e do
+OpenRouter. O `vals-ai` publica Terminal-Bench 4.0 **por subcategoria**
+(`software`, `security`, `operations`…), útil para `debugging` (`software`)
+e `review` (`security`).
+
 Fica de fora: Agent Security League (Endor; SecPass seria ótimo para
 `review`, mas só HTML sem CI publicado), AIME/LiveCodeBench (poucos modelos
 atuais no AA), Scale VLU/MultiChallenge (desatualizados), MMMU-Pro (visão é
@@ -244,22 +263,27 @@ reescreve `models.yaml` atomicamente (escreve `.tmp`, valida, `rename`).
 
 ```
 1. catálogo   = GET http://127.0.0.1:8317/v1/models  (chave do proxy)
-              ∩ tiers.yaml                          ← só o que temos E tem tier
+              → é a lista viva: modelo novo no proxy entra na próxima run
+              ∩ tiers.yaml                          ← só o que tem tier
+              modelo no proxy SEM tier → WARN no journal com o id, nunca
+              silencioso (é o sinal para o operador classificar)
 2. capacidade = models.dev api.json → vision, custo por modelo
-3. por fonte:
-   arena     parquet `latest` de text_style_control e webdev (HF, sem chave)
+3. por fonte (agregadores primeiro, originais como reserva):
+   eee       HF api tree data/{vals-ai,llm-stats,artificial-analysis-llms}/<org>/<model>
+             → N snapshots JSON; fica o mais novo por evaluation_name
+             (benchmark_updated / cron_run_date); score_details.score
+   openrouter GET /api/v1/benchmarks (Bearer) → data[].{source, benchmark,
+             model_slug, score/accuracy, stddev, n, as_of}
+   epoch     benchmarks_data.zip → CSVs; "Model version" = id_effort;
+             "95% CI half-width" quando existe; "Release date"
+   arena     parquet `latest` de text_style_control, webdev, agent (HF)
              → rating, rating_lower/upper, leaderboard_publish_date
-   tbench    HTML → payload RSC → "rows"[].metrics.accuracy, ci95_half_width,
-             metadata.reasoning_effort, date
-   scale     HTML → payload RSC → "entries"[].score, confidenceInterval_upper,
-             createdAt; effort vem do nome ("xHigh", "max")
-   aa        HTML → <script type="application/ld+json"> Dataset → data[]
-             (top-20; effort entre parênteses no label; sem CI → margin fixa
-             por benchmark, declarada no script)
+   tbench/scale RSC — reserva; só roda para benchmark ainda vazio após os
+             anteriores
 4. aliases: mapa explícito nome-na-fonte → id do catálogo, por fonte,
    mantido à mão no script (ex.: "GPT 6 Astra (Codex) xHigh*" →
-   gpt-6-astra@xhigh). Nome novo sem alias → aviso no log, linha ignorada.
-   Nunca casar por substring solta.
+   gpt-6-astra@xhigh; EEE `openai/gpt-6-astra` → gpt-6-astra). Nome novo
+   sem alias → aviso no log, linha ignorada. Nunca casar por substring solta.
 5. só substitui um score se a nova data ≥ a gravada; fonte fora do ar mantém
    os scores anteriores dela (a tabela nunca regride a vazio).
 6. valida com as mesmas regras do loader do plugin; falha → não toca no
@@ -268,16 +292,27 @@ reescreve `models.yaml` atomicamente (escreve `.tmp`, valida, `rename`).
 
 Detalhes verificados em 2026-09-24:
 
+- EEE: `https://huggingface.co/api/datasets/evaleval/EEE_datastore/tree/main/data/<fonte>/<org>/<modelo>`
+  lista os JSONs; `resolve/main/<path>` baixa cada um. Uma pasta de modelo
+  tem dezenas a centenas de snapshots (um por cron) — ler todos e ficar com
+  o mais novo por `evaluation_name`; é I/O, não parsing. O endpoint
+  `/parquet` do dataset devolve `dataset generation failed` — não usar.
+  `vals-ai` grava `benchmark_updated`; `llm-stats` só `cron_run_date`.
+- OpenRouter: `source` ∈ {`artificial-analysis`, `openrouter`,
+  `design-arena`}; slugs de modelo canônicos (`openai/gpt-6-astra`),
+  sem effort. 526 KB por chamada.
+- Epoch: um ZIP (2,3 MB), `benchmark_metadata.csv` lista arquivo e coluna
+  de score por benchmark; alguns CSVs (`deepswe`, `terminalbench`) têm
+  `Reasoning effort` explícito e `Harness`. `swe_bench_verified.csv` está
+  parado — confirma a exclusão.
 - Arena: `https://huggingface.co/datasets/lmarena-ai/leaderboard-dataset/resolve/refs%2Fconvert%2Fparquet/<config>/latest/0000.parquet`
   (text_style_control 590 KB, webdev 27 KB, agent ~8 KB). A API `/rows` do
   HF dá 429 em uso contínuo; o parquet não.
 - tbench.ai e Scale são Next.js RSC: os dados vêm em `self.__next_f.push`
   como JSON escapado; extrair `"rows"` / `"entries"` por casamento de
   colchetes. Frágil por natureza — quebra de layout = fonte pulada com aviso,
-  scores antigos ficam.
-- AA: ld+json é estável e público; a Data API (`/api/v2/language/models/free`,
-  chave grátis, 100 req/dia) só dá índices compostos — não substitui as
-  páginas por avaliação.
+  scores antigos ficam. Hoje tudo que eles têm já vem do EEE; ficam como
+  reserva.
 - AA "with fallback" nos Claude é o modo que a AA rodou; tratar como o
   effort declarado, anotar `note: with-fallback`.
 - `ponytail:` o mapa de aliases é manual; automatizar só se a manutenção
