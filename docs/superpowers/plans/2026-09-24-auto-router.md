@@ -70,7 +70,7 @@ cpa-plugin-auto-router/
 **Interfaces:**
 - Produces: confirmed facts that Tasks 6–9 rely on; if any check fails, stop and report — do not proceed to Task 6.
 
-- [ ] **Step 1: Build the official example against the local checkout and load it in the running proxy**
+- [x] **Step 1: Build the official example against the local checkout and load it in the running proxy**
 
 ```bash
 cd /home/hermes/projects/CLIProxyAPI/examples/plugin/claude-web-search-router/go
@@ -89,7 +89,7 @@ Then: `XDG_RUNTIME_DIR=/run/user/1000 systemctl --user restart cliproxyapi-test 
 
 Expected: a line showing the plugin loaded (id `claude-web-search-router`, abi 1, schema 6) and no `abi mismatch` / `schema` error. Record the exact lines in the checks file.
 
-- [ ] **Step 2: Confirm the thinking suffix through the normal path is clamped, not rejected**
+- [x] **Step 2: Confirm the thinking suffix through the normal path is clamped, not rejected**
 
 ```bash
 KEY=$(cat /home/hermes/cliproxyapi-test/api-key)
@@ -99,7 +99,7 @@ curl -s http://127.0.0.1:8318/v1/chat/completions -H "Authorization: Bearer $KEY
 
 Expected: HTTP 200 with a completion (Kimi has no `max`; the host clamps to `high`). A 400 mentioning thinking means the suffix path is strict — record it; the plugin would then send `high` for models whose `levels` (models.dev) lack the requested level (small change in Task 4, `Thinking()`).
 
-- [ ] **Step 3: Record which session signal OMP and Hermes send**
+- [x] **Step 3: Record which session signal OMP and Hermes send**
 
 ```bash
 grep -n -i "prompt_cache_key\|x-session\|session-id\|X-Session-Affinity" /home/hermes/.hermes/hermes-agent/agent/auxiliary_client.py | head
@@ -108,11 +108,11 @@ grep -rn -i "prompt_cache_key\|x-session-id\|x-session-affinity" /home/hermes/pr
 
 Expected: at least one of `prompt_cache_key` (Responses) or `X-Session-ID`/`X-Session-Affinity` per client. Record which. If neither, the plugin falls back to the first-user-message hash (Task 5) — acceptable, note it.
 
-- [ ] **Step 4: Confirm host.model.execute_stream preserves Responses SSE and that executor headers are filtered**
+- [x] **Step 4: Confirm host.model.execute_stream preserves Responses SSE and that executor headers are filtered**
 
 Read `sdk/api/handlers/handlers_execution.go:223-226` and `handlers_interceptors.go:289-294` in the checkout: `downstreamHeadersFromExecutor(raw, PassthroughHeadersEnabled(cfg))` returns `nil` when passthrough is off. Record: "X-Auto-Router reaches the client only if `passthrough-headers: true`; default off; log line is authoritative." The SSE passthrough itself is exercised end-to-end in Task 9 (smoke); no separate check.
 
-- [ ] **Step 5: Revert the example plugin, commit the checks file**
+- [x] **Step 5: Revert the example plugin, commit the checks file**
 
 ```bash
 rm /home/hermes/cliproxyapi-test/plugins/claude-web-search-router.so
