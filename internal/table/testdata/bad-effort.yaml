@@ -1,0 +1,6 @@
+benchmarks: {arena-coding: {source: s, unit: pct}}
+models:
+  m:
+    tier: top
+    scores:
+      arena-coding: [{effort: insane, value: 1, margin: 0, date: 2026-09-24}]

@@ -240,7 +240,7 @@ func (w *Watched) Get() *Table                   // stat; reload on mtime change
 
 Validation rules (each is a test): unknown tier → error; score with empty `Date` or `Margin < 0` → error; score referencing a benchmark not in `Benchmarks` → error; effort outside the allowed set → error; `Models` empty → error.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```go
 package table
@@ -278,9 +278,9 @@ func TestWatchKeepsOldOnBadReload(t *testing.T) {
 
 `testdata/good.yaml` is the spec's example table verbatim (section "Formato da tabela"). Each `bad-*.yaml` is `good.yaml` with one field broken (tier `ultra`; date removed; score under `nonexistent-bench`; effort `insane`; `models: {}`).
 
-- [ ] **Step 2: Run, expect compile failure** — `go test ./internal/table/` → `undefined: Load`.
+- [x] **Step 2: Run, expect compile failure** — `go test ./internal/table/` → `undefined: Load`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 package table
@@ -343,9 +343,9 @@ func (w *Watched) Get() *Table {
 }
 ```
 
-- [ ] **Step 4: Run tests, expect PASS** — `go test ./internal/table/ -v`.
+- [x] **Step 4: Run tests, expect PASS** — `go test ./internal/table/ -v`.
 
-- [ ] **Step 5: Commit** — `git add internal/table && git commit -m "feat(table): models.yaml loader with validation and mtime reload"`.
+- [x] **Step 5: Commit** — `git add internal/table && git commit -m "feat(table): models.yaml loader with validation and mtime reload"`.
 
 ---
 
