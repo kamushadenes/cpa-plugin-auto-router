@@ -1,0 +1,7 @@
+Model version,Pass@1,Pass@4,Harness,Reasoning effort,Release date,Organization,Country,Training compute (FLOP),Training compute notes,Name,95% CI half-width,Runs,Mean cost (USD),Mean output tokens,Mean agent steps,Source,Notes
+gpt-5.6-sol_max,0.7266666666666667,0.8584070796460178,mini-swe-agent,max,2026-07-09,OpenAI,United States of America,,,gpt-5-6-sol (max),0.02829822249837175,4,8.386436346666667,60013.64444444444,61.25333333333333,https://deepswe.datacurve.ai/,
+claude-fable-5_max,0.6972477064220184,0.84070796460177,mini-swe-agent,max,2026-06-09,Anthropic,United States of America,,,claude-fable-5 (max),0.04033474250807936,4,21.634702092592594,118592.77293577982,88.4288990825688,https://deepswe.datacurve.ai/,
+gpt-6-astra_max,0.7323008849557522,0.7964601769911505,mini-swe-agent,max,2026-09-03,OpenAI,United States of America,1.0001e+27,"per OpenAI and affiliates (e.g. Nvidia), 6 Astra was trained on at least 100,000 GB200s in Abilene, Texas (so 100,000 in ""Hardware quantity"" is a lower bound/underestimate).
+
+This suggests around 1e27 FLOP (corresponding to ~100k GB200s over 90 days at 25% FP8 MFU). See more detailed estimate in this notebook, yielding a CI of ~[5e26, 2e27] FLOP.
+https://colab.research.google.com/drive/1DRlugIQs-_zoV66AJT1gQg6I1-NX7NqN ",gpt-6-astra (max),0.008303197562056526,4,12.369032401327434,61148.50663716814,28.45353982300885,https://deepswe.datacurve.ai/,

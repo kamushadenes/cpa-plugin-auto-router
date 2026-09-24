@@ -1,0 +1,238 @@
+{
+  "schema_version": "0.3.0",
+  "evaluation_id": "vals-ai/terminal-bench-4/openai_gpt-6-astra/1790065965.095395",
+  "retrieved_timestamp": "1790065965.095395",
+  "source_metadata": {
+    "source_name": "Vals.ai Leaderboard - Terminal-Bench 4.0",
+    "source_type": "documentation",
+    "source_organization_name": "Vals.ai",
+    "source_organization_url": "https://www.vals.ai",
+    "evaluator_relationship": "third_party",
+    "additional_details": {
+      "benchmark_slug": "terminal-bench-4",
+      "benchmark_name": "Terminal-Bench 4.0",
+      "benchmark_updated": "2026-09-21",
+      "dataset_type": "public",
+      "industry": "coding",
+      "leaderboard_page_url": "https://www.vals.ai/benchmarks/terminal-bench-4",
+      "extraction_method": "static_astro_benchmark_view_props",
+      "type_of_addition": "cron",
+      "cron_run_date": "2026-09-22",
+      "cron_adapter": "vals_ai",
+      "cron_run_url": "https://github.com/evaleval/every_eval_ever/actions/runs/35705012182",
+      "cron_unknown_inferred_fields": "deployment_type,model_availability"
+    }
+  },
+  "eval_library": {
+    "name": "Vals.ai",
+    "version": "unknown"
+  },
+  "model_info": {
+    "name": "gpt-6-astra",
+    "id": "openai/gpt-6-astra",
+    "developer": "openai",
+    "inference_platform": "OpenAI",
+    "additional_details": {
+      "vals_model_id": "openai/gpt-6-astra",
+      "vals_provider": "OpenAI",
+      "deployment_type": "unknown",
+      "model_availability": "unknown"
+    }
+  },
+  "evaluation_results": [
+    {
+      "evaluation_result_id": "terminal-bench-4:overall:openai/gpt-6-astra:score",
+      "evaluation_name": "vals_ai.terminal-bench-4.overall",
+      "source_data": {
+        "dataset_name": "Terminal-Bench 4.0 - Overall",
+        "source_type": "url",
+        "url": [
+          "https://www.vals.ai/benchmarks/terminal-bench-4"
+        ],
+        "additional_details": {
+          "benchmark_slug": "terminal-bench-4",
+          "task_key": "overall",
+          "dataset_type": "public",
+          "leaderboard_page_url": "https://www.vals.ai/benchmarks/terminal-bench-4"
+        }
+      },
+      "metric_config": {
+        "evaluation_description": "Accuracy reported by Vals.ai for Terminal-Bench 4.0 (Overall).",
+        "metric_id": "vals_ai.terminal-bench-4.overall.accuracy",
+        "metric_name": "Accuracy",
+        "metric_kind": "accuracy",
+        "metric_unit": "percent",
+        "lower_is_better": false,
+        "score_type": "continuous",
+        "min_score": 0.0,
+        "max_score": 100.0,
+        "additional_details": {
+          "score_scale": "percent_0_to_100",
+          "max_score_source": "fixed_percentage_bound",
+          "leaderboard_page_url": "https://www.vals.ai/benchmarks/terminal-bench-4"
+        }
+      },
+      "score_details": {
+        "score": 57.071,
+        "details": {
+          "benchmark_slug": "terminal-bench-4",
+          "benchmark_name": "Terminal-Bench 4.0",
+          "benchmark_updated": "2026-09-21",
+          "task_key": "overall",
+          "task_name": "Overall",
+          "dataset_type": "public",
+          "industry": "coding",
+          "raw_score": "57.071",
+          "raw_stderr": "3.072",
+          "latency": "2522.424",
+          "cost_per_test": "8.210681",
+          "max_output_tokens": "128000",
+          "reasoning_effort": "max",
+          "provider": "OpenAI"
+        },
+        "uncertainty": {
+          "standard_error": {
+            "value": 3.072,
+            "method": "vals_reported"
+          }
+        }
+      },
+      "generation_config": {
+        "generation_args": {
+          "max_tokens": 128000
+        },
+        "additional_details": {
+          "reasoning_effort": "max"
+        }
+      }
+    },
+    {
+      "evaluation_result_id": "terminal-bench-4:security:openai/gpt-6-astra:score",
+      "evaluation_name": "vals_ai.terminal-bench-4.security",
+      "source_data": {
+        "dataset_name": "Terminal-Bench 4.0 - Security",
+        "source_type": "url",
+        "url": [
+          "https://www.vals.ai/benchmarks/terminal-bench-4"
+        ],
+        "additional_details": {
+          "benchmark_slug": "terminal-bench-4",
+          "task_key": "security",
+          "dataset_type": "public",
+          "leaderboard_page_url": "https://www.vals.ai/benchmarks/terminal-bench-4"
+        }
+      },
+      "metric_config": {
+        "evaluation_description": "Accuracy reported by Vals.ai for Terminal-Bench 4.0 (Security).",
+        "metric_id": "vals_ai.terminal-bench-4.security.accuracy",
+        "metric_name": "Accuracy",
+        "metric_kind": "accuracy",
+        "metric_unit": "percent",
+        "lower_is_better": false,
+        "score_type": "continuous",
+        "min_score": 0.0,
+        "max_score": 100.0,
+        "additional_details": {
+          "score_scale": "percent_0_to_100",
+          "max_score_source": "fixed_percentage_bound",
+          "leaderboard_page_url": "https://www.vals.ai/benchmarks/terminal-bench-4"
+        }
+      },
+      "score_details": {
+        "score": 53.333,
+        "details": {
+          "benchmark_slug": "terminal-bench-4",
+          "benchmark_name": "Terminal-Bench 4.0",
+          "benchmark_updated": "2026-09-21",
+          "task_key": "security",
+          "task_name": "Security",
+          "dataset_type": "public",
+          "industry": "coding",
+          "raw_score": "53.333",
+          "raw_stderr": "6.667",
+          "max_output_tokens": "128000",
+          "reasoning_effort": "max",
+          "provider": "OpenAI"
+        },
+        "uncertainty": {
+          "standard_error": {
+            "value": 6.667,
+            "method": "vals_reported"
+          }
+        }
+      },
+      "generation_config": {
+        "generation_args": {
+          "max_tokens": 128000
+        },
+        "additional_details": {
+          "reasoning_effort": "max"
+        }
+      }
+    },
+    {
+      "evaluation_result_id": "terminal-bench-4:software:openai/gpt-6-astra:score",
+      "evaluation_name": "vals_ai.terminal-bench-4.software",
+      "source_data": {
+        "dataset_name": "Terminal-Bench 4.0 - Software",
+        "source_type": "url",
+        "url": [
+          "https://www.vals.ai/benchmarks/terminal-bench-4"
+        ],
+        "additional_details": {
+          "benchmark_slug": "terminal-bench-4",
+          "task_key": "software",
+          "dataset_type": "public",
+          "leaderboard_page_url": "https://www.vals.ai/benchmarks/terminal-bench-4"
+        }
+      },
+      "metric_config": {
+        "evaluation_description": "Accuracy reported by Vals.ai for Terminal-Bench 4.0 (Software).",
+        "metric_id": "vals_ai.terminal-bench-4.software.accuracy",
+        "metric_name": "Accuracy",
+        "metric_kind": "accuracy",
+        "metric_unit": "percent",
+        "lower_is_better": false,
+        "score_type": "continuous",
+        "min_score": 0.0,
+        "max_score": 100.0,
+        "additional_details": {
+          "score_scale": "percent_0_to_100",
+          "max_score_source": "fixed_percentage_bound",
+          "leaderboard_page_url": "https://www.vals.ai/benchmarks/terminal-bench-4"
+        }
+      },
+      "score_details": {
+        "score": 55.556,
+        "details": {
+          "benchmark_slug": "terminal-bench-4",
+          "benchmark_name": "Terminal-Bench 4.0",
+          "benchmark_updated": "2026-09-21",
+          "task_key": "software",
+          "task_name": "Software",
+          "dataset_type": "public",
+          "industry": "coding",
+          "raw_score": "55.556",
+          "raw_stderr": "3.208",
+          "max_output_tokens": "128000",
+          "reasoning_effort": "max",
+          "provider": "OpenAI"
+        },
+        "uncertainty": {
+          "standard_error": {
+            "value": 3.208,
+            "method": "vals_reported"
+          }
+        }
+      },
+      "generation_config": {
+        "generation_args": {
+          "max_tokens": 128000
+        },
+        "additional_details": {
+          "reasoning_effort": "max"
+        }
+      }
+    }
+  ]
+}

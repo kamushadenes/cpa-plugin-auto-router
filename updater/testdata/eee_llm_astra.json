@@ -1,0 +1,176 @@
+{
+  "schema_version": "0.3.0",
+  "evaluation_id": "llm-stats/first_party/openai_gpt-6-astra/1790152484.859481",
+  "retrieved_timestamp": "1790152484.859481",
+  "source_metadata": {
+    "source_name": "LLM Stats API: first_party scores",
+    "source_type": "documentation",
+    "source_organization_name": "LLM Stats",
+    "source_organization_url": "https://llm-stats.com/",
+    "evaluator_relationship": "first_party",
+    "additional_details": {
+      "models_endpoint": "https://api.llm-stats.com/v1/models",
+      "benchmarks_endpoint": "https://api.llm-stats.com/leaderboard/benchmarks",
+      "scores_endpoint": "https://api.llm-stats.com/v1/scores",
+      "scores_endpoint_fallback": "https://api.llm-stats.com/leaderboard/benchmarks/{benchmark_id}",
+      "developer_page_url": "https://llm-stats.com/developer",
+      "attribution_url": "https://llm-stats.com/",
+      "attribution_required": "true",
+      "source_role": "aggregator",
+      "type_of_addition": "cron",
+      "cron_run_date": "2026-09-23",
+      "cron_adapter": "llm_stats",
+      "cron_run_url": "https://github.com/evaleval/every_eval_ever/actions/runs/35837541896",
+      "cron_unknown_inferred_fields": "deployment_type,model_availability"
+    }
+  },
+  "eval_library": {
+    "name": "LLM Stats",
+    "version": "unknown"
+  },
+  "model_info": {
+    "name": "gpt-6-astra",
+    "id": "openai/gpt-6-astra",
+    "developer": "openai",
+    "additional_details": {
+      "raw_id": "gpt-6-astra",
+      "raw_model_name": "gpt-6-astra",
+      "raw_display_name": "GPT-6 Astra",
+      "raw_organization_id": "openai",
+      "raw_organization_name": "OpenAI",
+      "raw_context_length": "1050000",
+      "raw_input_modalities": "[\"image\",\"text\"]",
+      "raw_output_modalities": "[\"text\"]",
+      "raw_input_price": "10.0",
+      "raw_output_price": "50.0",
+      "raw_release_date": "2026-09-04",
+      "raw_model_id": "gpt-6-astra",
+      "raw_provider_slug": "openai",
+      "raw_provider_name": "ZeroEval",
+      "deployment_type": "unknown",
+      "model_availability": "unknown"
+    }
+  },
+  "evaluation_results": [
+    {
+      "evaluation_result_id": "deepswe-1.1::deepswe-1.1-gpt-6-astra",
+      "evaluation_name": "llm_stats.deepswe-1.1",
+      "source_data": {
+        "dataset_name": "DeepSWE 1.1",
+        "source_type": "url",
+        "url": [
+          "https://openai.com/index/gpt-6-astra/",
+          "https://llm-stats.com/models/gpt-6-astra",
+          "https://llm-stats.com/benchmarks/deepswe-1.1",
+          "https://api.llm-stats.com/leaderboard/benchmarks/deepswe-1.1"
+        ],
+        "additional_details": {
+          "raw_benchmark_id": "deepswe-1.1",
+          "raw_model_id": "gpt-6-astra",
+          "source_role": "aggregator"
+        }
+      },
+      "metric_config": {
+        "evaluation_description": "DeepSWE 1.1 evaluates software engineering agents using the mini-swe-agent harness.",
+        "metric_id": "llm_stats.deepswe-1.1.score",
+        "metric_name": "DeepSWE 1.1 score",
+        "metric_kind": "benchmark_score",
+        "metric_unit": "proportion",
+        "lower_is_better": false,
+        "score_type": "continuous",
+        "min_score": 0.0,
+        "max_score": 1.0,
+        "additional_details": {
+          "raw_benchmark_id": "deepswe-1.1",
+          "raw_score_field": "score",
+          "bound_strategy": "benchmark_max_with_zero_min",
+          "raw_max_score": "1.0",
+          "raw_name": "DeepSWE 1.1",
+          "raw_categories": "[\"agents\",\"code\"]",
+          "raw_modality": "text",
+          "raw_verified": "false",
+          "raw_model_count": "38"
+        }
+      },
+      "score_details": {
+        "score": 0.741,
+        "details": {
+          "raw_score": "0.741",
+          "raw_score_field": "score",
+          "raw_model_id": "gpt-6-astra",
+          "raw_benchmark_id": "deepswe-1.1",
+          "source_urls_json": "[\"https://openai.com/index/gpt-6-astra/\",\"https://llm-stats.com/models/gpt-6-astra\",\"https://llm-stats.com/benchmarks/deepswe-1.1\",\"https://api.llm-stats.com/leaderboard/benchmarks/deepswe-1.1\"]",
+          "raw_score_id": "deepswe-1.1::gpt-6-astra",
+          "raw_self_reported": "true",
+          "raw_self_reported_source": "https://openai.com/index/gpt-6-astra/",
+          "raw_source_organization": "openai",
+          "raw_source_domain": "openai.com",
+          "raw_provenance_label": "unknown",
+          "raw_verified": "false",
+          "inferred_evaluator_relationship": "first_party",
+          "relationship_inference_reason": "source_matches_model_developer"
+        }
+      }
+    },
+    {
+      "evaluation_result_id": "frontiercode-1.1::frontiercode-1.1-gpt-6-astra",
+      "evaluation_name": "llm_stats.frontiercode-1.1",
+      "source_data": {
+        "dataset_name": "FrontierCode 1.1",
+        "source_type": "url",
+        "url": [
+          "https://openai.com/index/gpt-6-astra/",
+          "https://llm-stats.com/models/gpt-6-astra",
+          "https://llm-stats.com/benchmarks/frontiercode-1.1",
+          "https://api.llm-stats.com/leaderboard/benchmarks/frontiercode-1.1"
+        ],
+        "additional_details": {
+          "raw_benchmark_id": "frontiercode-1.1",
+          "raw_model_id": "gpt-6-astra",
+          "source_role": "aggregator"
+        }
+      },
+      "metric_config": {
+        "evaluation_description": "FrontierCode 1.1 evaluates whether coding-agent changes are mergeable, using unit tests, maintainer-defined rubrics, and verifiers. Runs flagged for unfair internet use receive a zero score.",
+        "metric_id": "llm_stats.frontiercode-1.1.score",
+        "metric_name": "FrontierCode 1.1 score",
+        "metric_kind": "benchmark_score",
+        "metric_unit": "proportion",
+        "lower_is_better": false,
+        "score_type": "continuous",
+        "min_score": 0.0,
+        "max_score": 1.0,
+        "additional_details": {
+          "raw_benchmark_id": "frontiercode-1.1",
+          "raw_score_field": "score",
+          "bound_strategy": "benchmark_max_with_zero_min",
+          "raw_max_score": "1.0",
+          "raw_name": "FrontierCode 1.1",
+          "raw_categories": "[\"reasoning\",\"agents\",\"code\"]",
+          "raw_modality": "text",
+          "raw_verified": "false",
+          "raw_model_count": "20"
+        }
+      },
+      "score_details": {
+        "score": 0.533,
+        "details": {
+          "raw_score": "0.533",
+          "raw_score_field": "score",
+          "raw_model_id": "gpt-6-astra",
+          "raw_benchmark_id": "frontiercode-1.1",
+          "source_urls_json": "[\"https://openai.com/index/gpt-6-astra/\",\"https://llm-stats.com/models/gpt-6-astra\",\"https://llm-stats.com/benchmarks/frontiercode-1.1\",\"https://api.llm-stats.com/leaderboard/benchmarks/frontiercode-1.1\"]",
+          "raw_score_id": "frontiercode-1.1::gpt-6-astra",
+          "raw_self_reported": "true",
+          "raw_self_reported_source": "https://openai.com/index/gpt-6-astra/",
+          "raw_source_organization": "openai",
+          "raw_source_domain": "openai.com",
+          "raw_provenance_label": "unknown",
+          "raw_verified": "false",
+          "inferred_evaluator_relationship": "first_party",
+          "relationship_inference_reason": "source_matches_model_developer"
+        }
+      }
+    }
+  ]
+}

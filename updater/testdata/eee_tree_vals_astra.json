@@ -1,0 +1,14 @@
+[
+  {
+    "type": "file",
+    "oid": "ca0a48cd0b442bc186a7d66ec49142da1d36ce3b",
+    "size": 18626,
+    "path": "data/vals-ai/openai/gpt-6-astra/205007fc-fce0-4e52-9d7b-7136cbe76409.json"
+  },
+  {
+    "type": "file",
+    "oid": "050bc4d3368973379dce88aacd4eea54b67e6e68",
+    "size": 18628,
+    "path": "data/vals-ai/openai/gpt-6-astra/1d5ffc47-4821-42e4-b9fe-7129ada79bc8.json"
+  }
+]

@@ -912,7 +912,7 @@ Source readers (all take a `fetch(url) -> bytes` so tests inject fixtures):
 
 `merge.merge(old: Table|None, rows, catalog_ids, tiers, caps)`: start from old table's scores for ids still in catalog; for each row keep it if no existing `(model, bench, effort)` or `row.date >= existing.date`; drop rows for ids not in `catalog ∩ tiers`; WARN each catalog id without tier; result `benchmarks` = union of declared ids in `aliases.BENCHMARKS` (id → `{source, unit}`); `validate()` = same rules as the Go loader; `write_atomic(path)`.
 
-- [ ] **Step 1: Write failing tests** (fixture-driven; fixtures are small hand-trimmed copies of the real payloads captured on 2026-09-24 — cut to ≤ 3 models each)
+- [x] **Step 1: Write failing tests** (fixture-driven; fixtures are small hand-trimmed copies of the real payloads captured on 2026-09-24 — cut to ≤ 3 models each)
 
 ```python
 def test_eee_keeps_newest_snapshot(fx):
@@ -956,13 +956,13 @@ def test_validate_rejects_missing_date(tmp_path):
 
 `fx` is a fixture returning `fetch(url)` that serves `testdata/` by URL substring (`"EEE_datastore/tree" → listing json`, `"resolve/main" → snapshot`, `"openrouter.ai" → openrouter.json`, `"epoch.ai" → zip built on the fly from epoch_deepswe.csv`, `"leaderboard-dataset" → parquet`).
 
-- [ ] **Step 2: Run, expect failure** — `cd updater && uv run --with pyyaml --with pyarrow --with pytest --python 3.12 python -m pytest -q`.
+- [x] **Step 2: Run, expect failure** — `cd updater && uv run --with pyyaml --with pyarrow --with pytest --python 3.12 python -m pytest -q`.
 
-- [ ] **Step 3: Implement** `sources.py`, `aliases.py` (explicit dicts; **every** catalog id from Task 1's `tiers.yaml` must have an entry per source or an explicit `None`), `merge.py`, `__main__.py` (argparse; `fetch` = `urllib.request` with UA `cpa-auto-router-updater/0.1`, 60 s timeout, retry ×3 with backoff on 429/5xx; per-source `try/except` → `WARN source failed: <err>`; end summary line `updated=N kept=M dropped=K unmapped=U untiered=[...]`).
+- [x] **Step 3: Implement** `sources.py`, `aliases.py` (explicit dicts; **every** catalog id from Task 1's `tiers.yaml` must have an entry per source or an explicit `None`), `merge.py`, `__main__.py` (argparse; `fetch` = `urllib.request` with UA `cpa-auto-router-updater/0.1`, 60 s timeout, retry ×3 with backoff on 429/5xx; per-source `try/except` → `WARN source failed: <err>`; end summary line `updated=N kept=M dropped=K unmapped=U untiered=[...]`).
 
-- [ ] **Step 4: Run tests, expect PASS.**
+- [x] **Step 4: Run tests, expect PASS** — `cd updater && uv run --with pyyaml --with pyarrow --with pytest --python 3.12 python -m pytest -q`.
 
-- [ ] **Step 5: Commit** — `git add updater && git commit -m "feat(updater): EEE/OpenRouter/Epoch/Arena/models.dev readers, merge rules, atomic write"`.
+- [x] **Step 5: Commit** — `git add updater && git commit -m "feat(updater): EEE/OpenRouter/Epoch/Arena/models.dev readers, merge rules, atomic write"`.
 
 ---
 

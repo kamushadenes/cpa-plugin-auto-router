@@ -1,0 +1,7 @@
+Model version,Arena Score,Release date,Organization,Country,Training compute (FLOP),Training compute notes,Score 95% CI,Votes,Last updated,Source,Source link (site from table),Notes,95% CI High,95% CI Low,id
+gpt-6-astra_max,1800.28,2026-09-03,OpenAI,United States of America,1.0001e+27,"per OpenAI and affiliates (e.g. Nvidia), 6 Astra was trained on at least 100,000 GB200s in Abilene, Texas (so 100,000 in ""Hardware quantity"" is a lower bound/underestimate).
+
+This suggests around 1e27 FLOP (corresponding to ~100k GB200s over 90 days at 25% FP8 MFU). See more detailed estimate in this notebook, yielding a CI of ~[5e26, 2e27] FLOP.
+https://colab.research.google.com/drive/1DRlugIQs-_zoV66AJT1gQg6I1-NX7NqN ",,2281,,https://arena.ai/leaderboard,https://web.lmarena.ai/leaderboard,,1816.76,1783.81,rec5pxBoPZ09DjlAl
+claude-fable-5-1_max,1758.05,2026-09-01,Anthropic,United States of America,,,,3036,,https://arena.ai/leaderboard,https://web.lmarena.ai/leaderboard,,1771.65,1744.44,recW7c6YS46DN6aYk
+gpt-5.6-sol_xhigh,1617.32,2026-07-09,OpenAI,United States of America,,,,11916,,https://arena.ai/leaderboard,https://web.lmarena.ai/leaderboard,,1624.28,1610.36,recG5CUO9e2GOfiiz
