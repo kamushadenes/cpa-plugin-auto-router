@@ -159,8 +159,7 @@ func difficultyLabel(p EffortDistribution) (string, bool) {
 
 // DifficultyConfidence returns the probability mass supporting the label.
 func DifficultyConfidence(p EffortDistribution) float64 {
-	label, bumped := difficultyLabel(p)
-	switch label {
+	switch label, _ := difficultyLabel(p); label {
 	case Trivial:
 		return p["0"]
 	case Routine:
@@ -168,10 +167,6 @@ func DifficultyConfidence(p EffortDistribution) float64 {
 	case Hard:
 		return p["2"] + p["3"]
 	default:
-		confidence := p["4"]
-		if bumped {
-			confidence += p["3"]
-		}
-		return confidence
+		return p["3"] + p["4"]
 	}
 }
