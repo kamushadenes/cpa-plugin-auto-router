@@ -395,19 +395,29 @@ func effectiveRouterHeader(model string, decision decide.Decision, failed []stri
 }
 
 func logFailover(req rpcExecutorRequest, decision decide.Decision, routeCtx routeContext, failed []string) {
+	category, difficulty := routeCtx.category, routeCtx.difficulty
+	if len(routeCtx.factors) > 0 {
+		category = decide.Category(routeCtx.factors)
+	}
+	if len(routeCtx.effortP) > 0 {
+		difficulty = decide.Difficulty(routeCtx.effortP)
+	}
 	fields := map[string]any{
-		"session":      hashSession(session.ID(req.Headers, req.OriginalRequest)),
-		"category":     routeCtx.category,
-		"category_p":   routeCtx.categoryProb,
-		"difficulty":   routeCtx.difficulty,
-		"difficulty_p": routeCtx.difficultyProb,
-		"confidence":   routeCtx.confidence,
-		"tier":         decision.Tier,
-		"model":        decision.Model,
-		"thinking":     decision.Thinking,
-		"reason":       "failover",
-		"jev_ms":       routeCtx.jevMillis,
-		"failed_from":  append([]string(nil), failed...),
+		"session":               hashSession(session.ID(req.Headers, req.OriginalRequest)),
+		"category":              category,
+		"factors":               routeCtx.factors,
+		"effort_p":              routeCtx.effortP,
+		"effort_mean":           routeCtx.effortMean,
+		"difficulty":            difficulty,
+		"category_confidence":   routeCtx.categoryConfidence,
+		"difficulty_confidence": routeCtx.difficultyConfidence,
+		"confidence":            routeCtx.confidence,
+		"tier":                  decision.Tier,
+		"model":                 decision.Model,
+		"thinking":              decision.Thinking,
+		"reason":                "failover",
+		"jev_ms":                routeCtx.jevMillis,
+		"failed_from":           append([]string(nil), failed...),
 	}
 	payload, _ := json.Marshal(fields)
 	hostLog(req.HostCallbackID, "info", "auto-router decision "+string(payload), fields)

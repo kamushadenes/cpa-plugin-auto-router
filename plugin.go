@@ -85,8 +85,10 @@ type pluginState struct {
 	tableErrLogged bool
 }
 
-var state pluginState
-var store = session.New(time.Hour, 65536)
+var (
+	state pluginState
+	store = session.New(time.Hour, 65536)
+)
 
 type pendingRoute struct {
 	decision decide.Decision
@@ -251,23 +253,29 @@ func modelRegistration() pluginapi.ModelRegistrationResponse {
 }
 
 type routeMeta struct {
-	category       string
-	categoryProb   map[string]float64
-	difficulty     string
-	difficultyProb map[string]float64
-	confidence     float64
-	jevMillis      int64
-	hasImage       bool
+	category             string
+	factors              decide.Factors
+	effortP              decide.EffortDistribution
+	effortMean           float64
+	difficulty           string
+	categoryConfidence   float64
+	difficultyConfidence float64
+	confidence           float64
+	jevMillis            int64
+	hasImage             bool
 }
 
 type routeContext struct {
-	category       string
-	categoryProb   map[string]float64
-	difficulty     string
-	difficultyProb map[string]float64
-	confidence     float64
-	jevMillis      int64
-	hasImage       bool
+	category             string
+	factors              decide.Factors
+	effortP              decide.EffortDistribution
+	effortMean           float64
+	difficulty           string
+	categoryConfidence   float64
+	difficultyConfidence float64
+	confidence           float64
+	jevMillis            int64
+	hasImage             bool
 }
 
 func routeModel(raw []byte) ([]byte, error) {
@@ -348,16 +356,19 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 		jevResult, jevErr := jev.Decide(context.Background(), jevCfg, text, signals)
 		if jevErr == nil {
 			jevOK = true
-			meta.categoryProb = jevResult.Category.Probabilities
-			meta.difficultyProb = jevResult.Difficulty.Probabilities
-			meta.confidence = jevResult.Difficulty.Confidence
+			meta.factors = jevResult.Factors
+			meta.effortP = jevResult.Effort
+			meta.effortMean = decide.EffortMean(jevResult.Effort)
+			meta.categoryConfidence = decide.CategoryConfidence(jevResult.Factors)
+			meta.difficultyConfidence = decide.DifficultyConfidence(jevResult.Effort)
+			meta.confidence = meta.difficultyConfidence
 			meta.jevMillis = jevResult.Millis
-			if jevResult.Category.Confidence >= cfg.ConfidenceThreshold {
-				category = jevResult.Category.Choice
+			if meta.categoryConfidence >= cfg.ConfidenceThreshold {
+				category = decide.Category(jevResult.Factors)
 				meta.category = category
 			}
-			if jevResult.Difficulty.Confidence >= cfg.ConfidenceThreshold {
-				difficulty = jevResult.Difficulty.Choice
+			if meta.difficultyConfidence >= cfg.ConfidenceThreshold {
+				difficulty = decide.Difficulty(jevResult.Effort)
 				meta.difficulty = difficulty
 			}
 		}
@@ -370,22 +381,32 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 	if err != nil {
 		return decide.Decision{}, routeMeta{}, routeContext{}, err
 	}
-	return decision, meta, routeContext{category: category, categoryProb: meta.categoryProb, difficulty: difficulty, difficultyProb: meta.difficultyProb, confidence: meta.confidence, jevMillis: meta.jevMillis, hasImage: signals.Images > 0}, nil
+	return decision, meta, routeContext{category: category, factors: meta.factors, effortP: meta.effortP, effortMean: meta.effortMean, difficulty: difficulty, categoryConfidence: meta.categoryConfidence, difficultyConfidence: meta.difficultyConfidence, confidence: meta.confidence, jevMillis: meta.jevMillis, hasImage: signals.Images > 0}, nil
 }
 
 func routeResponse(callbackID, sid string, decision decide.Decision, meta routeMeta) ([]byte, error) {
+	category, difficulty := meta.category, meta.difficulty
+	if len(meta.factors) > 0 {
+		category = decide.Category(meta.factors)
+	}
+	if len(meta.effortP) > 0 {
+		difficulty = decide.Difficulty(meta.effortP)
+	}
 	fields := map[string]any{
-		"session":      hashSession(sid),
-		"category":     meta.category,
-		"category_p":   meta.categoryProb,
-		"difficulty":   meta.difficulty,
-		"difficulty_p": meta.difficultyProb,
-		"confidence":   meta.confidence,
-		"tier":         decision.Tier,
-		"model":        decision.Model,
-		"thinking":     decision.Thinking,
-		"reason":       decision.Reason,
-		"jev_ms":       meta.jevMillis,
+		"session":               hashSession(sid),
+		"category":              category,
+		"factors":               meta.factors,
+		"effort_p":              meta.effortP,
+		"effort_mean":           meta.effortMean,
+		"difficulty":            difficulty,
+		"category_confidence":   meta.categoryConfidence,
+		"difficulty_confidence": meta.difficultyConfidence,
+		"confidence":            meta.confidence,
+		"tier":                  decision.Tier,
+		"model":                 decision.Model,
+		"thinking":              decision.Thinking,
+		"reason":                decision.Reason,
+		"jev_ms":                meta.jevMillis,
 	}
 	payload, err := json.Marshal(fields)
 	if err != nil {

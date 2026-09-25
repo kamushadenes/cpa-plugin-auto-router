@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/snippet"
 )
 
@@ -32,17 +33,10 @@ type Config struct {
 	APIKey       string
 	Timeout      time.Duration
 }
-
-type Answer struct {
-	Choice        string
-	Probabilities map[string]float64
-	Confidence    float64
-}
-
 type Result struct {
-	Category   Answer
-	Difficulty Answer
-	Millis     int64
+	Factors decide.Factors
+	Effort  decide.EffortDistribution
+	Millis  int64
 }
 
 func (c Config) Validate() error {
@@ -83,9 +77,9 @@ func Decide(ctx context.Context, c Config, item string, sig snippet.Signals) (Re
 		model = defaultModel
 	}
 	requestBody, err := json.Marshal(struct {
-		Model     string                    `json:"model"`
-		State     decisionState             `json:"state"`
-		Questions map[string]choiceQuestion `json:"questions"`
+		Model     string              `json:"model"`
+		State     decisionState       `json:"state"`
+		Questions map[string]question `json:"questions"`
 	}{
 		Model: model,
 		State: decisionState{
@@ -146,39 +140,30 @@ type decisionState struct {
 	Signals snippet.Signals `json:"signals"`
 }
 
-type choiceQuestion struct {
-	Type         string            `json:"type"`
-	Instructions string            `json:"instructions"`
-	Criteria     map[string]string `json:"criteria"`
+type question struct {
+	Type         string   `json:"type"`
+	Instructions string   `json:"instructions"`
+	Criteria     []string `json:"criteria,omitempty"`
 }
 
-func questions() map[string]choiceQuestion {
-	return map[string]choiceQuestion{
-		"category": {
-			Type:         "choice",
-			Instructions: "Classify the task in `item` (use `signals` as hints).",
-			Criteria: map[string]string{
-				"webdev":           "front-end/web UI/HTML/CSS/JS apps",
-				"backend":          "server code, APIs, data models, implementation in a repo",
-				"agentic-terminal": "multi-step work driving shell/tools/files",
-				"debugging":        "find why something fails; trace behaviour",
-				"review":           "read, critique or test existing code; security review",
-				"spec-design":      "architecture, design, planning, specs",
-				"writing":          "prose, docs, messages, summaries for humans",
-				"extraction":       "extract/reformat/classify data, tiny transformations",
-				"math-data":        "math, statistics, data analysis with a definite answer",
-			},
-		},
-		"difficulty": {
-			Type:         "choice",
-			Instructions: "How hard is `item` for a strong model?",
-			Criteria: map[string]string{
-				"trivial": "one-liner or lookup, no reasoning",
-				"routine": "standard task, known pattern",
-				"hard":    "needs real reasoning, many constraints or a large codebase",
-				"extreme": "research-grade, ambiguous, or very long multi-step",
-			},
-		},
+func questions() map[string]question {
+	return map[string]question{
+		"touches_code":    {Type: "noul", Instructions: "Does `item` ask to write or change code?"},
+		"frontend":        {Type: "noul", Instructions: "Is the deliverable of `item` a user-visible web UI (HTML/CSS/JS/components)?"},
+		"fix_existing":    {Type: "noul", Instructions: "Does `item` ask to explain or fix something that already fails?"},
+		"judges_existing": {Type: "noul", Instructions: "Does `item` ask to evaluate, critique, review or test code that already exists?"},
+		"design_only":     {Type: "noul", Instructions: "Does `item` want a plan, architecture or spec rather than code now?"},
+		"many_steps":      {Type: "noul", Instructions: "Will fulfilling `item` require chaining several shell commands, tools or files?"},
+		"transform_only":  {Type: "noul", Instructions: "Is `item` just extracting, reformatting or classifying given data?"},
+		"exact_answer":    {Type: "noul", Instructions: "Does `item` ask for a number or figure that can be computed or verified from given data?"},
+		"writes_tests":    {Type: "noul", Instructions: "Does `item` ask to write or add tests for code?"},
+		"effort": {Type: "score", Instructions: "How much effort would a strong senior engineer need for `item`?", Criteria: []string{
+			"a minute: one-liner, lookup or trivial edit",
+			"under an hour: known pattern, one file or one component",
+			"a few hours: several parts, needs some design or care",
+			"a day or more: real trade-offs, many constraints or a large system",
+			"open-ended: investigation or research before the work can even start",
+		}},
 	}
 }
 
@@ -192,55 +177,81 @@ func parseResult(body []byte) (Result, error) {
 	if envelope.Answers == nil {
 		return Result{}, errors.New("jev response is missing answers")
 	}
-	category, err := parseAnswer(envelope.Answers["category"], map[string]bool{
-		"webdev": true, "backend": true, "agentic-terminal": true, "debugging": true,
-		"review": true, "spec-design": true, "writing": true, "extraction": true, "math-data": true,
-	})
-	if err != nil {
-		return Result{}, fmt.Errorf("invalid category answer: %w", err)
+	factors := make(decide.Factors, len(categoryFactors))
+	for _, name := range categoryFactors {
+		value, err := parseNoul(envelope.Answers[name])
+		if err != nil {
+			return Result{}, fmt.Errorf("invalid factor %s: %w", name, err)
+		}
+		factors[name] = value
 	}
-	difficulty, err := parseAnswer(envelope.Answers["difficulty"], map[string]bool{
-		"trivial": true, "routine": true, "hard": true, "extreme": true,
-	})
+	effort, err := parseEffort(envelope.Answers["effort"])
 	if err != nil {
-		return Result{}, fmt.Errorf("invalid difficulty answer: %w", err)
+		return Result{}, fmt.Errorf("invalid effort answer: %w", err)
 	}
-	return Result{Category: category, Difficulty: difficulty}, nil
+	return Result{Factors: factors, Effort: effort}, nil
 }
 
-func parseAnswer(raw json.RawMessage, allowed map[string]bool) (Answer, error) {
+var categoryFactors = []string{"touches_code", "frontend", "fix_existing", "judges_existing", "design_only", "many_steps", "transform_only", "exact_answer", "writes_tests"}
+
+func parseNoul(raw json.RawMessage) (float64, error) {
 	if len(raw) == 0 || string(raw) == "null" {
-		return Answer{}, errors.New("answer is missing")
+		return 0, errors.New("answer is missing")
 	}
 	var wire struct {
-		Choice        string             `json:"choice"`
-		Probabilities map[string]float64 `json:"probabilities"`
-		Confidence    *float64           `json:"confidence"`
+		Noul *float64 `json:"noul"`
 	}
 	if err := json.Unmarshal(raw, &wire); err != nil {
-		return Answer{}, errors.New("answer is malformed")
+		return 0, errors.New("answer is malformed")
 	}
-	choice := strings.TrimSpace(wire.Choice)
-	if !allowed[choice] {
-		return Answer{}, errors.New("choice is invalid")
+	if wire.Noul == nil {
+		return 0, errors.New("noul is missing")
 	}
-	if wire.Probabilities == nil {
-		wire.Probabilities = map[string]float64{choice: 1}
+	if !validProbability(*wire.Noul) {
+		return 0, errors.New("noul is invalid")
 	}
-	for name, probability := range wire.Probabilities {
-		if !math.IsNaN(probability) && !math.IsInf(probability, 0) && probability >= 0 && probability <= 1 {
-			continue
+	return *wire.Noul, nil
+}
+
+func parseEffort(raw json.RawMessage) (decide.EffortDistribution, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, errors.New("answer is missing")
+	}
+	var wire struct {
+		Probabilities map[string]*float64 `json:"probabilities"`
+		Score         *float64            `json:"score"`
+	}
+	if err := json.Unmarshal(raw, &wire); err != nil {
+		return nil, errors.New("answer is malformed")
+	}
+	if wire.Probabilities != nil {
+		if len(wire.Probabilities) != 5 {
+			return nil, errors.New("effort probabilities are incomplete")
 		}
-		return Answer{}, fmt.Errorf("probability for %s is invalid", name)
-	}
-	confidence := float64(0)
-	if wire.Confidence != nil {
-		confidence = *wire.Confidence
-		if math.IsNaN(confidence) || math.IsInf(confidence, 0) || confidence < 0 || confidence > 1 {
-			return Answer{}, errors.New("confidence is invalid")
+		out := make(decide.EffortDistribution, 5)
+		for i := 0; i < 5; i++ {
+			key := fmt.Sprint(i)
+			probability, ok := wire.Probabilities[key]
+			if !ok || probability == nil || !validProbability(*probability) {
+				return nil, fmt.Errorf("probability for %s is invalid", key)
+			}
+			out[key] = *probability
 		}
+		return out, nil
 	}
-	return Answer{Choice: choice, Probabilities: wire.Probabilities, Confidence: confidence}, nil
+	if wire.Score == nil || math.IsNaN(*wire.Score) || math.IsInf(*wire.Score, 0) || *wire.Score < 0 || *wire.Score > 4 || math.Trunc(*wire.Score) != *wire.Score {
+		return nil, errors.New("effort score is invalid")
+	}
+	out := make(decide.EffortDistribution, 5)
+	for i := 0; i < 5; i++ {
+		out[fmt.Sprint(i)] = 0
+	}
+	out[fmt.Sprint(int(*wire.Score))] = 1
+	return out, nil
+}
+
+func validProbability(value float64) bool {
+	return !math.IsNaN(value) && !math.IsInf(value, 0) && value >= 0 && value <= 1
 }
 
 func unavailable(message string) error {

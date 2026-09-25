@@ -2,6 +2,8 @@
 
 A native CLIProxyAPI plugin that exposes `auto-router`. It sends a bounded snippet of the last user message (up to `snippet_chars`, default 1500) and local request signals to Jev, then chooses a concrete model and thinking level from the local benchmark table. The host still performs the upstream request, including credentials, retries, cooldowns, usage accounting, and stream handling.
 
+Jev answers nine category factors and one five-level effort question in a single call. Go composes the labels using the calibrated rules in `internal/decide/compose.go`; the tests cover 39 category and 21 difficulty fixtures. Decision logs include `factors`, `effort_p`, `effort_mean`, and both confidences. Logged labels describe the composition before the confidence gate; `tier` and `thinking` describe the actual routing decision. A low-confidence difficulty keeps the previous session difficulty or uses `routine` for a new session.
+
 ## TEST verification
 
 Task9 was run against the TEST proxy on port 8318. Production (`cliproxyapi.service`, port 8317) was not changed. Production rollout is an operator-run Task10 step.

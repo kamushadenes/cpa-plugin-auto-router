@@ -174,7 +174,15 @@ func seedHostDecision(t *testing.T, sessionID, model string, streamID ...string)
 		Reason: "new",
 		State:  decide.State{Difficulty: decide.Routine, Model: model, Thinking: "high", Tier: "mid"},
 	}
-	pending.Store(sessionID, pendingRoute{decision: decision, context: routeContext{difficulty: decision.State.Difficulty}})
+	pending.Store(sessionID, pendingRoute{decision: decision, context: routeContext{
+		category:             "backend",
+		factors:              decide.Factors{"touches_code": 1},
+		effortP:              decide.EffortDistribution{"0": 0, "1": 1, "2": 0, "3": 0, "4": 0},
+		effortMean:           1,
+		categoryConfidence:   1,
+		difficultyConfidence: 1,
+		difficulty:           decision.State.Difficulty,
+	}})
 	store.Put(sessionID, decision.State)
 	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
 		Model:           pluginIdentifier,
@@ -246,11 +254,37 @@ func assertFailoverLog(t *testing.T, fake *fakeHostCalls, model string, failed [
 				break
 			}
 		}
-		if matches {
-			return
+		if !matches {
+			continue
 		}
+		factors, factorsOK := fields["factors"].(decide.Factors)
+		effortP, effortOK := fields["effort_p"].(decide.EffortDistribution)
+		if !factorsOK || factors["touches_code"] != 1 || !effortOK || effortP["1"] != 1 || fields["effort_mean"] != float64(1) || fields["category_confidence"] != float64(1) || fields["difficulty_confidence"] != float64(1) {
+			continue
+		}
+		if _, ok := fields["category_p"]; ok {
+			t.Fatalf("obsolete category_p in failover log: %#v", fields)
+		}
+		if _, ok := fields["difficulty_p"]; ok {
+			t.Fatalf("obsolete difficulty_p in failover log: %#v", fields)
+		}
+		return
 	}
 	t.Fatalf("failover log missing model=%q failed_from=%#v: %#v", model, failed, fake.logs)
+}
+
+func TestFailoverLogUsesComposedLabelsBelowConfidenceThreshold(t *testing.T) {
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	factors := decide.Factors{"touches_code": 0.9, "frontend": 0.1, "fix_existing": 0.1, "judges_existing": 0.1, "design_only": 0.1, "many_steps": 0.1, "transform_only": 0.1, "exact_answer": 0.1, "writes_tests": 0.1}
+	effort := decide.EffortDistribution{"0": 0, "1": 0.07, "2": 0.46, "3": 0.03, "4": 0.44}
+	decision := decide.Decision{Choice: decide.Choice{Model: "model", Tier: "mid", Thinking: "high"}, Reason: "failover", State: decide.State{Difficulty: decide.Routine}}
+	ctx := routeContext{factors: factors, effortP: effort, effortMean: decide.EffortMean(effort), category: "", difficulty: decide.Routine, categoryConfidence: 0.5, difficultyConfidence: 0.03, confidence: 0.03}
+	logFailover(rpcExecutorRequest{}, decision, ctx, []string{"first"})
+	fields := fake.logs[0]["fields"].(map[string]any)
+	if fields["category"] != "backend" || fields["difficulty"] != decide.Hard {
+		t.Fatalf("logged failover labels = category=%#v difficulty=%#v", fields["category"], fields["difficulty"])
+	}
 }
 
 func waitPluginClose(t *testing.T, fake *fakeHostCalls) rpcStreamCloseRequest {

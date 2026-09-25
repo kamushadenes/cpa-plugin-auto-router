@@ -2,13 +2,28 @@ package main
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
+
+func calibratedJevResponse(touchesCode, frontend float64) string {
+	return `{"answers":{"touches_code":{"noul":` + formatFloat(touchesCode) + `},"frontend":{"noul":` + formatFloat(frontend) + `},"fix_existing":{"noul":0.1},"judges_existing":{"noul":0.1},"design_only":{"noul":0.1},"many_steps":{"noul":0.1},"transform_only":{"noul":0.1},"exact_answer":{"noul":0.1},"writes_tests":{"noul":0.1},"effort":{"probabilities":{"0":0,"1":1,"2":0,"3":0,"4":0}}}}`
+}
+
+func formatFloat(value float64) string {
+	return strconv.FormatFloat(value, 'f', -1, 64)
+}
+
+func lowConfidenceJevResponse(touchesCode, frontend float64) string {
+	return `{"answers":{"touches_code":{"noul":` + formatFloat(touchesCode) + `},"frontend":{"noul":` + formatFloat(frontend) + `},"fix_existing":{"noul":0.1},"judges_existing":{"noul":0.1},"design_only":{"noul":0.1},"many_steps":{"noul":0.1},"transform_only":{"noul":0.1},"exact_answer":{"noul":0.1},"writes_tests":{"noul":0.1},"effort":{"probabilities":{"0":0.4,"1":0.3,"2":0.2,"3":0.05,"4":0.05}}}}`
+}
 
 func TestRouteIgnoresOtherModels(t *testing.T) {
 	raw, err := json.Marshal(rpcModelRouteRequest{ModelRouteRequest: pluginapi.ModelRouteRequest{RequestedModel: "gpt-6-astra"}})
@@ -54,6 +69,110 @@ func TestRouteDecidesWithoutJev(t *testing.T) {
 	}
 	if value, ok := pending.Load("route-session"); !ok || value.(pendingRoute).decision.State.Model == "" {
 		t.Fatal("pending decision missing")
+	}
+}
+
+func TestRouteComposesCalibratedFactorsAndEffort(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(calibratedJevResponse(0.9, 0.5)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	request := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Body: []byte(`{"messages":[{"role":"user","content":"fix the API"}]}`)}
+	decision, meta, routeCtx, err := decideForWithContext(request, decide.State{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.category != "backend" || meta.difficulty != decide.Routine || meta.factors["touches_code"] != 0.9 || meta.effortP["1"] != 1 || meta.effortMean != 1 {
+		t.Fatalf("meta = %#v", meta)
+	}
+	if meta.categoryConfidence != 0.9 || meta.difficultyConfidence != 1 {
+		t.Fatalf("confidence = category=%v difficulty=%v", meta.categoryConfidence, meta.difficultyConfidence)
+	}
+	if routeCtx.category != meta.category || routeCtx.factors["frontend"] != 0.5 || routeCtx.effortP["1"] != 1 {
+		t.Fatalf("route context = %#v", routeCtx)
+	}
+	if decision.State.Difficulty != decide.Routine {
+		t.Fatalf("decision = %#v", decision)
+	}
+}
+
+func TestRouteLogsCalibratedMetadata(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(calibratedJevResponse(0.9, 0.5)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	request := rpcModelRouteRequest{ModelRouteRequest: pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Headers: http.Header{"X-Session-ID": []string{"metadata-session"}}, Body: []byte(`{"messages":[{"role":"user","content":"fix the API"}]}`)}}
+	if _, err := routeModel(marshalRoute(t, request.ModelRouteRequest)); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.logs) != 1 {
+		t.Fatalf("logs = %#v", fake.logs)
+	}
+	fields, ok := fake.logs[0]["fields"].(map[string]any)
+	if !ok {
+		t.Fatalf("log fields = %#v", fake.logs[0])
+	}
+	for _, key := range []string{"factors", "effort_p", "effort_mean", "category_confidence", "difficulty_confidence"} {
+		if _, ok := fields[key]; !ok {
+			t.Errorf("missing log field %q: %#v", key, fields)
+		}
+	}
+	for _, key := range []string{"category_p", "difficulty_p"} {
+		if _, ok := fields[key]; ok {
+			t.Errorf("obsolete log field %q = %#v", key, fields[key])
+		}
+	}
+}
+
+func TestRouteLogsComposedLabelsBelowConfidenceThreshold(t *testing.T) {
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	factors := decide.Factors{"touches_code": 0.9, "frontend": 0.1, "fix_existing": 0.1, "judges_existing": 0.1, "design_only": 0.1, "many_steps": 0.1, "transform_only": 0.1, "exact_answer": 0.1, "writes_tests": 0.1}
+	effort := decide.EffortDistribution{"0": 0, "1": 0.07, "2": 0.46, "3": 0.03, "4": 0.44}
+	decision := decide.Decision{Choice: decide.Choice{Model: "model", Tier: "mid", Thinking: "high"}, Reason: "new", State: decide.State{Difficulty: decide.Routine}}
+	meta := routeMeta{factors: factors, effortP: effort, effortMean: decide.EffortMean(effort), category: "", difficulty: decide.Routine, categoryConfidence: 0.5, difficultyConfidence: 0.03, confidence: 0.03}
+	if _, err := routeResponse("", "", decision, meta); err != nil {
+		t.Fatal(err)
+	}
+	fields := fake.logs[0]["fields"].(map[string]any)
+	if fields["category"] != "backend" || fields["difficulty"] != decide.Hard {
+		t.Fatalf("logged labels = category=%#v difficulty=%#v", fields["category"], fields["difficulty"])
+	}
+	logFailover(rpcExecutorRequest{}, decision, routeContext{factors: factors, effortP: effort, category: "", difficulty: decide.Routine}, []string{"failed-model"})
+	fields = fake.logs[1]["fields"].(map[string]any)
+	if fields["category"] != "backend" || fields["difficulty"] != decide.Hard {
+		t.Fatalf("failover labels = category=%#v difficulty=%#v", fields["category"], fields["difficulty"])
+	}
+}
+
+func TestRouteKeepsConfidenceFallbacksForNewAndExistingSessions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(lowConfidenceJevResponse(0.5, 0.5)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	request := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Body: []byte(`{"messages":[{"role":"user","content":"fix the API"}]}`)}
+	decision, meta, _, err := decideForWithContext(request, decide.State{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.category != "" || meta.categoryConfidence != 0.5 {
+		t.Fatalf("new low-confidence category = %#v", meta)
+	}
+	if decision.State.Difficulty != decide.Routine {
+		t.Fatalf("new low-confidence difficulty = %#v", decision.State)
+	}
+	prev := decide.State{Difficulty: decide.Hard, Model: "prior", Tier: "top", Thinking: "xhigh"}
+	_, meta, _, err = decideForWithContext(request, prev, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.category != "" || meta.difficulty != decide.Hard {
+		t.Fatalf("existing low-confidence fallback = %#v", meta)
 	}
 }
 
@@ -118,6 +237,19 @@ func configureTest(t *testing.T) {
 	}
 }
 
+func configureJevTest(t *testing.T, baseURL string) {
+	t.Helper()
+	t.Setenv("TEST_JEV_KEY", "test-key")
+	pending = sync.Map{}
+	config, err := json.Marshal(lifecycleRequest{ConfigYAML: []byte("enabled: true\njev_api_key_env: TEST_JEV_KEY\njev_base_url: " + baseURL + "\njev_timeout_ms: 1000\nconfidence_threshold: 0.6\ntable_path: testdata/models.yaml\n")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := configure(config); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func marshalRoute(t *testing.T, request pluginapi.ModelRouteRequest) []byte {
 	t.Helper()
 	raw, err := json.Marshal(rpcModelRouteRequest{ModelRouteRequest: request})
@@ -139,6 +271,7 @@ func decodeRouteResponse(t *testing.T, raw []byte) pluginapi.ModelRouteResponse 
 	}
 	return response
 }
+
 func TestPendingRouteDecisionAndContextAreConsumedTogether(t *testing.T) {
 	configureTest(t)
 	pending = sync.Map{}
