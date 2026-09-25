@@ -229,6 +229,7 @@ func parseEffort(raw json.RawMessage) (decide.EffortDistribution, error) {
 			return nil, errors.New("effort probabilities are incomplete")
 		}
 		out := make(decide.EffortDistribution, 5)
+		total := 0.0
 		for i := 0; i < 5; i++ {
 			key := fmt.Sprint(i)
 			probability, ok := wire.Probabilities[key]
@@ -236,6 +237,10 @@ func parseEffort(raw json.RawMessage) (decide.EffortDistribution, error) {
 				return nil, fmt.Errorf("probability for %s is invalid", key)
 			}
 			out[key] = *probability
+			total += *probability
+		}
+		if total < 0.98-1e-9 || total > 1.02+1e-9 {
+			return nil, errors.New("effort probabilities are not normalized")
 		}
 		return out, nil
 	}

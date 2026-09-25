@@ -106,6 +106,45 @@ func TestDecideUsesOneHotEffortScoreWhenProbabilitiesAreMissing(t *testing.T) {
 	}
 }
 
+func TestDecideValidatesEffortProbabilityDistribution(t *testing.T) {
+	tests := []struct {
+		name        string
+		probability string
+		want        map[string]float64
+		wantErr     bool
+	}{
+		{name: "five ones", probability: `{"0":1,"1":1,"2":1,"3":1,"4":1}`, wantErr: true},
+		{name: "lower boundary", probability: `{"0":0.1,"1":0.2,"2":0.3,"3":0.38,"4":0}`, want: map[string]float64{"0": 0.1, "1": 0.2, "2": 0.3, "3": 0.38, "4": 0}},
+		{name: "upper boundary", probability: `{"0":0.1,"1":0.2,"2":0.3,"3":0.4,"4":0.02}`, want: map[string]float64{"0": 0.1, "1": 0.2, "2": 0.3, "3": 0.4, "4": 0.02}},
+		{name: "rounded below one", probability: `{"0":0.1,"1":0.2,"2":0.3,"3":0.39,"4":0}`, want: map[string]float64{"0": 0.1, "1": 0.2, "2": 0.3, "3": 0.39, "4": 0}},
+		{name: "rounded above one", probability: `{"0":0.1,"1":0.2,"2":0.3,"3":0.4,"4":0.01}`, want: map[string]float64{"0": 0.1, "1": 0.2, "2": 0.3, "3": 0.4, "4": 0.01}},
+		{name: "missing key", probability: `{"0":0.2,"1":0.2,"2":0.2,"3":0.2}`, wantErr: true},
+		{name: "extra key", probability: `{"0":0.2,"1":0.2,"2":0.2,"3":0.2,"4":0.2,"5":0}`, wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = w.Write([]byte(`{"answers":{"touches_code":{"noul":0.9},"frontend":{"noul":0.1},"fix_existing":{"noul":0.2},"judges_existing":{"noul":0.1},"design_only":{"noul":0.1},"many_steps":{"noul":0.2},"transform_only":{"noul":0.1},"exact_answer":{"noul":0.1},"writes_tests":{"noul":0.1},"effort":{"probabilities":` + tc.probability + `}}}`))
+			}))
+			defer server.Close()
+
+			result, err := Decide(context.Background(), Config{BaseURL: server.URL, Model: "jev", APIKey: "secret", Timeout: time.Second}, "item", snippet.Signals{})
+			if tc.wantErr {
+				if !errors.Is(err, ErrUnavailable) {
+					t.Fatalf("error = %v, want ErrUnavailable", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Decide() error = %v", err)
+			}
+			if !reflect.DeepEqual(map[string]float64(result.Effort), tc.want) {
+				t.Fatalf("effort = %#v, want %#v", result.Effort, tc.want)
+			}
+		})
+	}
+}
+
 func TestDecideRejectsMalformedCalibratedAnswers(t *testing.T) {
 	validFactors := `"touches_code":{"noul":0.9},"frontend":{"noul":0.1},"fix_existing":{"noul":0.2},"judges_existing":{"noul":0.1},"design_only":{"noul":0.1},"many_steps":{"noul":0.2},"transform_only":{"noul":0.1},"exact_answer":{"noul":0.1},"writes_tests":{"noul":0.1}`
 	for _, tc := range []struct {
