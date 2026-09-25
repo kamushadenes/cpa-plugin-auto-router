@@ -386,3 +386,137 @@ func TestNextModelGoneWithoutEligibleCandidateReturnsError(t *testing.T) {
 		t.Fatal("missing previous model with no eligible replacement must return an error")
 	}
 }
+
+func withWindow(m table.Model, window int) table.Model {
+	m.ContextWindow = window
+	return m
+}
+
+func TestChooseContextWindowThreshold(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"tight": withWindow(mk("mid", 1, s("arena-coding", "", 1600, 5)), 200_000),
+		"roomy": withWindow(mk("mid", 5, s("arena-coding", "", 1500, 5)), 1_000_000),
+	})
+	in := Input{Table: tb, Category: "backend", Difficulty: Routine, EstTokens: 180_000}
+	c, err := Choose(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Model != "tight" || c.ContextFiltered {
+		t.Fatalf("estimate exactly at 90%% of the window must fit: %+v", c)
+	}
+	in.EstTokens = 180_001
+	c, err = Choose(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Model != "roomy" || c.Tier != "mid" || !c.ContextFiltered {
+		t.Fatalf("estimate past 90%% of the window must drop the model: %+v", c)
+	}
+}
+
+func TestChooseMissingContextWindowIsUnlimited(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"unknown": mk("mid", 1, s("arena-coding", "", 1600, 5)),
+		"zero":    withWindow(mk("mid", 5, s("arena-coding", "", 1500, 5)), 0),
+	})
+	c, err := Choose(Input{Table: tb, Category: "backend", Difficulty: Routine, EstTokens: 5_000_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Model != "unknown" || c.Reason != "ranked" || c.ContextFiltered {
+		t.Fatalf("unknown context window must fail open: %+v", c)
+	}
+}
+
+func TestChooseRaisesTierWhenNoModelFitsContext(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"mid-tight": withWindow(mk("mid", 1, s("arena-coding", "", 1600, 5)), 200_000),
+		"top-roomy": withWindow(mk("top", 50, s("arena-coding", "", 1400, 5)), 1_000_000),
+	})
+	in := Input{Table: tb, Category: "backend", Difficulty: Routine, EstTokens: 100_000}
+	c, err := Choose(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Model != "mid-tight" || c.Tier != "mid" || c.Reason != "ranked" || c.ContextFiltered {
+		t.Fatalf("a fitting same-tier model must win: %+v", c)
+	}
+	in.EstTokens = 500_000
+	c, err = Choose(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Model != "top-roomy" || c.Tier != "top" || c.Thinking != "high" || c.Reason != "tier-raised" || !c.ContextFiltered {
+		t.Fatalf("a tier with no fitting model must escalate: %+v", c)
+	}
+}
+
+func TestChooseOverflowTakesLargestEligibleWindow(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"flash-huge": withWindow(mk("flash", 0, s("arena-coding", "", 1700, 5)), 4_000_000),
+		"mid-small":  withWindow(mk("mid", 1, s("arena-coding", "", 1600, 5)), 200_000),
+		"mid-big":    withWindow(mk("mid", 2, s("arena-coding", "", 1000, 5)), 900_000),
+		"top-middle": withWindow(mk("top", 50, s("arena-coding", "", 1500, 5)), 500_000),
+	})
+	c, err := Choose(Input{Table: tb, Category: "backend", Difficulty: Routine, EstTokens: 5_000_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Model != "mid-big" || c.Tier != "mid" || c.Thinking != "high" {
+		t.Fatalf("overflow must take the largest window at or above the tier floor: %+v", c)
+	}
+	if c.Reason != "context_overflow_risk" || !c.ContextFiltered {
+		t.Fatalf("overflow must be reported: %+v", c)
+	}
+}
+
+func TestChooseOverflowKeepsVisionRequirement(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"blind": withWindow(mkv("mid", 1, false, nil), 900_000),
+		"eyes":  withWindow(mkv("mid", 2, true, nil), 400_000),
+	})
+	c, err := Choose(Input{Table: tb, Category: "backend", Difficulty: Routine, HasImage: true, EstTokens: 5_000_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.Model != "eyes" || c.Reason != "context_overflow_risk" {
+		t.Fatalf("overflow must still honour vision: %+v", c)
+	}
+}
+
+func TestNextDropsSessionModelThatNoLongerFitsContext(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"small": withWindow(mk("mid", 1, s("arena-coding", "", 1600, 5)), 200_000),
+		"roomy": withWindow(mk("mid", 5, s("arena-coding", "", 1500, 5)), 1_000_000),
+	})
+	prev := State{Difficulty: Routine, Model: "small", Thinking: "high", Tier: "mid"}
+	in := Input{Table: tb, Category: "backend", Difficulty: Routine, EstTokens: 500_000}
+	for _, jevOK := range []bool{true, false} {
+		d, err := Next(in, prev, jevOK)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d.Model != "roomy" || d.Tier != "mid" || d.Thinking != "high" || !d.ContextFiltered {
+			t.Fatalf("session model that no longer fits must be replaced (jevOK=%v): %+v", jevOK, d)
+		}
+		if d.State.Model != "roomy" {
+			t.Fatalf("state must follow the replacement (jevOK=%v): %+v", jevOK, d.State)
+		}
+	}
+}
+
+func TestNextEscalateThinkingRechecksContext(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"small": withWindow(mk("top", 5, s("arena-coding", "", 1500, 5)), 200_000),
+		"roomy": withWindow(mk("top", 1, s("arena-coding", "", 1600, 5)), 1_000_000),
+	})
+	prev := State{Difficulty: Hard, Model: "small", Thinking: "xhigh", Tier: "top"}
+	d, err := Next(Input{Table: tb, Category: "backend", Difficulty: Extreme, EstTokens: 500_000}, prev, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Model != "roomy" || d.Tier != "top" || d.Thinking != "max" || d.State.Difficulty != Extreme || !d.ContextFiltered {
+		t.Fatalf("same-tier escalation must re-check capacity: %+v", d)
+	}
+}

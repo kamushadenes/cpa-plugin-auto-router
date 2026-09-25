@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -10,6 +11,7 @@ import (
 	"sync"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/session"
@@ -680,5 +682,212 @@ func TestSessionLogUsesShortHash(t *testing.T) {
 	got := hashSession(raw)
 	if got == raw || len(got) != len("h:00000000") || got[:2] != "h:" {
 		t.Fatalf("hashed session = %q", got)
+	}
+}
+
+func largeChatBody(t *testing.T, filler int) []byte {
+	t.Helper()
+	body, err := json.Marshal(map[string]any{
+		"messages": []any{
+			map[string]any{"role": "user", "content": strings.Repeat("a", filler)},
+			map[string]any{"role": "assistant", "content": "noted"},
+			map[string]any{"role": "user", "content": "ok?"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return body
+}
+
+func TestRouteEstimateAddsImageOverhead(t *testing.T) {
+	configureTest(t)
+	body := []byte(`{"messages":[{"role":"user","content":[{"type":"text","text":"look"},{"type":"image_url","image_url":{"url":"https://example.invalid/a.png"}},{"type":"image_url","image_url":{"url":"https://example.invalid/b.png"}}]}]}`)
+	request := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Body: body}
+	_, meta, routeCtx, err := decideForWithContext(request, decide.State{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := (len(body)+3)/4 + 2000
+	if routeCtx.estTokens != want || meta.estTokens != want {
+		t.Fatalf("estimate = context %d meta %d, want %d for %d body bytes plus two images", routeCtx.estTokens, meta.estTokens, want, len(body))
+	}
+}
+
+func TestRouteLargeBodyWithShortFinalMessageLeavesMidTier(t *testing.T) {
+	configureTest(t)
+	store = session.New(time.Hour, 65536)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+
+	small := pluginapi.ModelRouteRequest{
+		RequestedModel: pluginIdentifier,
+		SourceFormat:   "chat-completions",
+		Headers:        http.Header{"X-Session-ID": []string{"small-body-session"}},
+		Body:           []byte(`{"messages":[{"role":"user","content":"ok?"}]}`),
+	}
+	if _, err := routeModel(marshalRoute(t, small)); err != nil {
+		t.Fatal(err)
+	}
+	if fields := decisionLogFields(t, fake.logs[0]); fields["model"] != "gpt-5.6-luna" || fields["context_filtered"] != false {
+		t.Fatalf("short body must stay on the mid tier: %#v", fields)
+	}
+
+	body := largeChatBody(t, 600_000)
+	large := small
+	large.Headers = http.Header{"X-Session-ID": []string{"large-body-session"}}
+	large.Body = body
+	if _, err := routeModel(marshalRoute(t, large)); err != nil {
+		t.Fatal(err)
+	}
+	fields := decisionLogFields(t, fake.logs[1])
+	if fields["model"] != "blind" || fields["tier"] != "top" || fields["thinking"] != "high" {
+		t.Fatalf("600k body with a short final message must leave the mid tier: %#v", fields)
+	}
+	if fields["est_tokens"] != float64((len(body)+3)/4) || fields["context_filtered"] != true {
+		t.Fatalf("large route log = %#v", fields)
+	}
+}
+
+func TestRouteOverflowReportsContextOverflowRisk(t *testing.T) {
+	configureTest(t)
+	store = session.New(time.Hour, 65536)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+
+	body := largeChatBody(t, 1_600_000)
+	request := pluginapi.ModelRouteRequest{
+		RequestedModel: pluginIdentifier,
+		SourceFormat:   "chat-completions",
+		Headers:        http.Header{"X-Session-ID": []string{"overflow-session"}},
+		Body:           body,
+	}
+	raw, err := routeModel(marshalRoute(t, request))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := decodeRouteResponse(t, raw)
+	if !response.Handled || response.Reason != "context_overflow_risk" {
+		t.Fatalf("overflow route response = %+v", response)
+	}
+	fields := decisionLogFields(t, fake.logs[0])
+	if fields["reason"] != "context_overflow_risk" || fields["model"] != "blind" {
+		t.Fatalf("overflow must fall back to the largest window: %#v", fields)
+	}
+	if fields["est_tokens"] != float64((len(body)+3)/4) || fields["context_filtered"] != true {
+		t.Fatalf("overflow route log = %#v", fields)
+	}
+}
+
+func TestJevPayloadStaysWithinPublishedJevLimits(t *testing.T) {
+	const (
+		systemSentinel = "SYSTEM-PROMPT-MUST-NOT-REACH-JEV"
+		tail           = "LAST-USER-TAIL: répare le café ☕🙂"
+	)
+	chatBody := func(quotedText string) []byte {
+		return []byte(`{"messages":[{"role":"system","content":"` + systemSentinel + `"},{"role":"user","content":` + quotedText + `}]}`)
+	}
+	responsesBody := func(quotedText string) []byte {
+		return []byte(`{"input":[{"role":"system","content":[{"type":"input_text","text":"` + systemSentinel + `"}]},{"role":"user","content":[{"type":"input_text","text":` + quotedText + `}]}]}`)
+	}
+	tests := []struct {
+		name   string
+		format string
+		filler string
+		body   func(quotedText string) []byte
+	}{
+		{name: "chat completions", format: "chat-completions", filler: "refactor the billing module and keep the audit trail. ", body: chatBody},
+		{name: "responses", format: "responses", filler: "Prüfe die Rechnungen, 請檢查帳單, проверь счета. ", body: responsesBody},
+		{name: "worst case escaping", format: "chat-completions", filler: "\x00\x01\x1f\"\\\u2028\u2029🙂", body: chatBody},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var mu sync.Mutex
+			var captured []byte
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				raw, err := io.ReadAll(r.Body)
+				if err != nil {
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				mu.Lock()
+				captured = raw
+				mu.Unlock()
+				_, _ = w.Write([]byte(calibratedJevResponse(0.9, 0.1)))
+			}))
+			defer server.Close()
+			t.Setenv("TEST_JEV_KEY", "test-key")
+			pending = sync.Map{}
+			config, err := json.Marshal(lifecycleRequest{ConfigYAML: []byte("enabled: true\njev_api_key_env: TEST_JEV_KEY\njev_base_url: " + server.URL + "\njev_timeout_ms: 2000\nconfidence_threshold: 0.6\nsnippet_chars: 100000\ntable_path: testdata/models.yaml\n")})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := configure(config); err != nil {
+				t.Fatal(err)
+			}
+
+			text := strings.Repeat(tt.filler, 20_000/utf8.RuneCountInString(tt.filler)+1) + tail
+			quoted, err := json.Marshal(text)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: tt.format, Body: tt.body(string(quoted))}
+			decision, meta, _, err := decideForWithContext(request, decide.State{}, false)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if meta.category == "" || meta.difficulty == "" || meta.difficultyConfidence <= 0 || decision.Model == "" {
+				t.Fatalf("jev answer was not usable: decision = %#v, meta = %#v", decision, meta)
+			}
+
+			mu.Lock()
+			payloadBytes := captured
+			mu.Unlock()
+			if len(payloadBytes) >= 32_000 {
+				t.Fatalf("jev payload is %d bytes, want it under the documented 32000 state-plus-longest-question budget", len(payloadBytes))
+			}
+			var payload struct {
+				State struct {
+					Item string `json:"item"`
+				} `json:"state"`
+				Questions map[string]json.RawMessage `json:"questions"`
+			}
+			if err := json.Unmarshal(payloadBytes, &payload); err != nil {
+				t.Fatalf("jev payload is not valid json: %v", err)
+			}
+			item := payload.State.Item
+			if got := utf8.RuneCountInString(item); got != maxJevSnippetChars {
+				t.Fatalf("item is %d characters, want the request clamped to %d", got, maxJevSnippetChars)
+			}
+			if !strings.HasSuffix(item, tail) {
+				t.Fatalf("item must keep the newest user text, got trailing %q", item[len(item)-len(tail):])
+			}
+			if !utf8.ValidString(item) || strings.ContainsRune(item, utf8.RuneError) {
+				t.Fatalf("item was cut mid-rune: %q", item)
+			}
+			if strings.Contains(item, systemSentinel) {
+				t.Fatal("item leaked the system prompt")
+			}
+			if len(payload.Questions) != 10 {
+				t.Fatalf("payload asked %d questions, want the 9 factors plus effort", len(payload.Questions))
+			}
+		})
+	}
+}
+
+func TestReconcileRouteDecisionRechecksEstimate(t *testing.T) {
+	configureTest(t)
+	decision := decide.Decision{
+		Choice: decide.Choice{Model: "blind", Tier: "top", Thinking: "high"},
+		Reason: "new",
+		State:  decide.State{Difficulty: decide.Routine, Model: "blind", Thinking: "high", Tier: "top"},
+	}
+	effective := decide.State{Difficulty: decide.Hard, Model: "eyes", Thinking: "xhigh", Tier: "top"}
+	got, err := reconcileRouteDecision(decision, effective, routeContext{category: "writing", difficulty: decide.Hard, estTokens: 300_000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Model != "blind" || got.Tier != "top" || got.Thinking != "xhigh" || !got.ContextFiltered {
+		t.Fatalf("reconcile must re-check the estimate against the effective model: %+v", got)
 	}
 }

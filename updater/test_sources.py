@@ -323,21 +323,42 @@ def test_arena_parquets_cover_all_routing_categories_with_published_ci():
     assert "published score_ci lower/upper interval" in agent.note
 
 
-def test_modelsdev_returns_complete_caps_for_exact_catalog_aliases(caplog):
+def test_modelsdev_extracts_positive_integer_context_windows(caplog):
     fetch, _ = _fixture_fetch()
     caps = sources.modelsdev(fetch, {"gpt-6-astra", "mimo-v2.6-flash"})
     assert caps == {
         "gpt-6-astra": {
             "vision": True,
             "cost": {"input": 10.0, "output": 50.0},
+            "context_window": 1050000,
         },
         "mimo-v2.6-flash": {
             "vision": True,
             "cost": {"input": 0.14, "output": 0.28},
+            "context_window": 1048576,
         },
     }
     assert "gpt-6-astra-pro" not in caps
     assert "unmapped modelsdev openai/gpt-6-astra-pro" in caplog.text
+
+
+@pytest.mark.parametrize("context_value", [None, 0, -1, 1.5, "1050000", True])
+def test_modelsdev_omits_unknown_or_invalid_context_window(context_value):
+    payload = json.loads((TESTDATA / "modelsdev.json").read_bytes())
+    limit = payload["nano-gpt"]["models"]["openai/gpt-6-astra"]["limit"]
+    if context_value is None:
+        limit.pop("context")
+    else:
+        limit["context"] = context_value
+
+    def fetch(url: str, key: str | None = None) -> bytes:
+        return json.dumps(payload).encode()
+
+    caps = sources.modelsdev(fetch, {"gpt-6-astra"})
+    assert caps["gpt-6-astra"] == {
+        "vision": True,
+        "cost": {"input": 10.0, "output": 50.0},
+    }
 
 
 def test_modelsdev_preserves_published_zero_cost():
@@ -349,6 +370,7 @@ def test_modelsdev_preserves_published_zero_cost():
         "mimo-v2.6-flash": {
             "vision": True,
             "cost": {"input": 0.0, "output": 0.0},
+            "context_window": 1048576,
         }
     }
 

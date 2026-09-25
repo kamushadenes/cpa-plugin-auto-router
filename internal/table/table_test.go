@@ -18,6 +18,19 @@ func TestLoadGood(t *testing.T) {
 		t.Fatalf("value = %v", got)
 	}
 }
+
+func TestLoadContextWindow(t *testing.T) {
+	tb, err := Load("testdata/good.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tb.Models["gpt-6-astra"].ContextWindow; got != 400000 {
+		t.Fatalf("gpt-6-astra context window = %d, want 400000", got)
+	}
+	if got := tb.Models["mimo-v2.6-flash"].ContextWindow; got != 0 {
+		t.Fatalf("omitted context window = %d, want 0 for unlimited", got)
+	}
+}
 func TestLoadAllowsZeroMargin(t *testing.T) {
 	p := t.TempDir() + "/models.yaml"
 	const contents = `benchmarks: {bench: {source: s, unit: pct}}

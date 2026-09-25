@@ -490,10 +490,15 @@ def modelsdev(fetch: Fetch, catalog_ids: set[str]) -> dict[str, dict[str, Any]]:
             ):
                 log.warning("incomplete modelsdev capabilities %s %s", model_id, source_id)
                 continue
-            result[model_id] = {
+            capability: dict[str, Any] = {
                 "vision": "image" in inputs,
                 "cost": {"input": input_cost, "output": output_cost},
             }
+            limit = model.get("limit")
+            context_window = limit.get("context") if isinstance(limit, dict) else None
+            if isinstance(context_window, int) and not isinstance(context_window, bool) and context_window > 0:
+                capability["context_window"] = context_window
+            result[model_id] = capability
     return result
 
 

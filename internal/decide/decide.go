@@ -109,6 +109,7 @@ type Input struct {
 	Category   string
 	Difficulty string
 	HasImage   bool
+	EstTokens  int
 	Available  func(model string) bool
 	Exclude    func(model string) bool
 }
@@ -117,6 +118,7 @@ type Choice struct {
 	Model, Tier, Thinking, Benchmark string
 	Score                            float64
 	Reason                           string
+	ContextFiltered                  bool
 }
 
 // scoreAt returns the score usable at effort: exact or closest below; an empty
@@ -168,62 +170,79 @@ func Choose(in Input) (Choice, error) {
 func chooseAtOrAbove(in Input, startTier, thinking string) (Choice, error) {
 	tier := startTier
 	reason := "ranked"
+	contextFiltered := false
+	overflowModel := ""
+	overflowWindow := 0
 	for {
-		candidates := candidates(in, tier)
-		if len(candidates) == 0 {
-			next, ok := tierUp[tier]
-			if !ok {
-				return Choice{}, errors.New("no candidate in any tier")
+		all := candidates(in, tier)
+		for _, id := range all {
+			window := in.Table.Models[id].ContextWindow
+			if window > overflowWindow || (window == overflowWindow && window > 0 && (overflowModel == "" || id < overflowModel)) {
+				overflowModel, overflowWindow = id, window
 			}
-			tier = next
-			reason = "tier-raised"
-			continue
 		}
-
-		if in.Category == "extraction" {
-			return Choice{
-				Model:    cheapest(in.Table, candidates),
-				Tier:     tier,
-				Thinking: thinking,
-				Reason:   fallbackReason(reason),
-			}, nil
-		}
-
-		for _, benchmark := range BenchmarksFor(in.Category) {
-			ranked := make([]scored, 0, len(candidates))
-			for _, id := range candidates {
-				model := in.Table.Models[id]
-				score, ok := scoreAt(model.Scores[benchmark], thinking)
-				if !ok {
+		fitting, filtered := filterContextCandidates(in, all)
+		contextFiltered = contextFiltered || filtered
+		if len(fitting) > 0 {
+			if in.Category == "extraction" {
+				return Choice{Model: cheapest(in.Table, fitting), Tier: tier, Thinking: thinking, Reason: fallbackReason(reason), ContextFiltered: contextFiltered}, nil
+			}
+			for _, benchmark := range BenchmarksFor(in.Category) {
+				ranked := make([]scored, 0, len(fitting))
+				for _, id := range fitting {
+					model := in.Table.Models[id]
+					score, ok := scoreAt(model.Scores[benchmark], thinking)
+					if !ok {
+						continue
+					}
+					ranked = append(ranked, scored{id: id, score: score, cost: model.Cost.Input + model.Cost.Output})
+				}
+				if len(ranked) == 0 {
 					continue
 				}
-				ranked = append(ranked, scored{
-					id:    id,
-					score: score,
-					cost:  model.Cost.Input + model.Cost.Output,
-				})
+				winner := bestScored(ranked)
+				return Choice{Model: winner.id, Tier: tier, Thinking: thinking, Benchmark: benchmark, Score: winner.score.Value, Reason: reason, ContextFiltered: contextFiltered}, nil
 			}
-			if len(ranked) == 0 {
-				continue
-			}
-			winner := bestScored(ranked)
-			return Choice{
-				Model:     winner.id,
-				Tier:      tier,
-				Thinking:  thinking,
-				Benchmark: benchmark,
-				Score:     winner.score.Value,
-				Reason:    reason,
-			}, nil
+			return Choice{Model: cheapest(in.Table, fitting), Tier: tier, Thinking: thinking, Reason: fallbackReason(reason), ContextFiltered: contextFiltered}, nil
 		}
 
-		return Choice{
-			Model:    cheapest(in.Table, candidates),
-			Tier:     tier,
-			Thinking: thinking,
-			Reason:   fallbackReason(reason),
-		}, nil
+		next, ok := tierUp[tier]
+		if !ok {
+			if contextFiltered {
+				if overflowModel != "" {
+					return Choice{Model: overflowModel, Tier: in.Table.Models[overflowModel].Tier, Thinking: thinking, Reason: "context_overflow_risk", ContextFiltered: true}, nil
+				}
+			}
+			return Choice{}, errors.New("no candidate in any tier")
+		}
+		tier = next
+		reason = "tier-raised"
 	}
+}
+
+func filterContextCandidates(in Input, ids []string) ([]string, bool) {
+	if in.EstTokens <= 0 {
+		return ids, false
+	}
+	out := ids[:0]
+	filtered := false
+	for _, id := range ids {
+		if contextFits(in.EstTokens, in.Table.Models[id].ContextWindow) {
+			out = append(out, id)
+			continue
+		}
+		filtered = true
+	}
+	return out, filtered
+}
+
+func contextFits(estTokens, contextWindow int) bool {
+	if estTokens <= 0 || contextWindow <= 0 {
+		return true
+	}
+	quotient, remainder := contextWindow/10, contextWindow%10
+	limit := quotient*9 + remainder*9/10
+	return estTokens <= limit
 }
 
 func fallbackReason(reason string) string {
@@ -315,6 +334,9 @@ func Next(in Input, prev State, jevOK bool) (Decision, error) {
 	}
 
 	wrap := func(choice Choice, reason, difficulty string) Decision {
+		if choice.Reason == "context_overflow_risk" {
+			reason = choice.Reason
+		}
 		state := State{Difficulty: difficulty, Model: choice.Model, Thinking: choice.Thinking, Tier: choice.Tier}
 		return Decision{Choice: choice, Reason: reason, State: state}
 	}
@@ -327,11 +349,13 @@ func Next(in Input, prev State, jevOK bool) (Decision, error) {
 	}
 
 	modelGone := false
+	contextGone := false
 	if hasPrev && in.Table != nil {
 		model, present := in.Table.Models[prev.Model]
 		modelGone = !present || (in.Exclude != nil && in.Exclude(prev.Model)) || (in.HasImage && !model.Vision)
+		contextGone = present && !contextFits(in.EstTokens, model.ContextWindow)
 	}
-	if hasPrev && (modelGone || (in.Available != nil && !in.Available(prev.Model))) {
+	if hasPrev && (modelGone || contextGone || (in.Available != nil && !in.Available(prev.Model))) {
 		difficulty := prev.Difficulty
 		if Rank(in.Difficulty) > Rank(prev.Difficulty) {
 			difficulty = in.Difficulty
@@ -349,7 +373,9 @@ func Next(in Input, prev State, jevOK bool) (Decision, error) {
 		if modelGone {
 			reason = "model-gone"
 		}
-		return wrap(choice, reason, difficulty), nil
+		decision := wrap(choice, reason, difficulty)
+		decision.ContextFiltered = decision.ContextFiltered || contextGone
+		return decision, nil
 	}
 
 	if !jevOK {
@@ -377,8 +403,12 @@ func Next(in Input, prev State, jevOK bool) (Decision, error) {
 
 	targetTier := maxTier(prevTier, TierOf(in.Difficulty))
 	if targetTier == prevTier {
+		thinking := ThinkingOf(in.Difficulty)
+		if effortRank[prevThinking] > effortRank[thinking] {
+			thinking = prevThinking
+		}
 		decision := keep("escalate-thinking")
-		decision.Thinking = ThinkingOf(in.Difficulty)
+		decision.Thinking = thinking
 		decision.State.Thinking = decision.Thinking
 		decision.State.Difficulty = in.Difficulty
 		return decision, nil
