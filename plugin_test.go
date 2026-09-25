@@ -154,7 +154,8 @@ func TestRouteDecidesWithoutJev(t *testing.T) {
 	if !response.Handled || response.TargetKind != pluginapi.ModelRouteTargetSelf || response.Reason != "jev-unavailable" {
 		t.Fatalf("response = %+v", response)
 	}
-	if value, ok := pending.Load("route-session"); !ok || value.(pendingRoute).decision.State.Model == "" {
+	key := requestKey(request.SourceFormat, request.Headers, request.Body)
+	if value, ok := pending.Load(key); !ok || value.(pendingRoute).decision.State.Model == "" {
 		t.Fatal("pending decision missing")
 	}
 }
@@ -302,7 +303,8 @@ func TestNewToolOnlyRequestUsesDefaultDecision(t *testing.T) {
 	if !response.Handled || response.Reason != "jev-unavailable" {
 		t.Fatalf("response = %+v", response)
 	}
-	value, ok := pending.Load("tool-session")
+	key := requestKey(request.SourceFormat, request.Headers, request.Body)
+	value, ok := pending.Load(key)
 	if !ok || value.(pendingRoute).decision.State.Difficulty != decide.Routine {
 		t.Fatalf("default decision = %#v", value)
 	}
@@ -325,7 +327,8 @@ func TestExistingExtremeToolOnlyStillVisionSwaps(t *testing.T) {
 	if !response.Handled || response.Reason != "vision-swap" {
 		t.Fatalf("response = %+v", response)
 	}
-	value, ok := pending.Load("vision-session")
+	key := requestKey(request.SourceFormat, request.Headers, request.Body)
+	value, ok := pending.Load(key)
 	if !ok || value.(pendingRoute).decision.Model != "eyes" {
 		t.Fatalf("vision decision = %#v", value)
 	}
@@ -382,19 +385,193 @@ func decodeRouteResponse(t *testing.T, raw []byte) pluginapi.ModelRouteResponse 
 	return response
 }
 
+func TestPendingRoutesMatchBodyBeforeExecution(t *testing.T) {
+	var mu sync.Mutex
+	jevCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		jevCalls++
+		mu.Unlock()
+		_, _ = w.Write([]byte(calibratedJevResponse(0.9, 0.5)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	store = session.New(time.Hour, 65536)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+
+	const sessionID = "pending-body-session"
+	imageBody := []byte(`{"messages":[{"role":"user","content":[{"type":"text","text":"describe"},{"type":"image_url","image_url":{"url":"https://example.invalid/image.png"}}]}]}`)
+	textBody := []byte(`{"messages":[{"role":"user","content":"describe"}]}`)
+	imageRoute := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Headers: http.Header{"X-Session-ID": []string{sessionID}}, Body: imageBody}
+	textRoute := imageRoute
+	textRoute.Body = textBody
+	if _, err := routeModel(marshalRoute(t, imageRoute)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := routeModel(marshalRoute(t, textRoute)); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	gotCalls := jevCalls
+	mu.Unlock()
+	if gotCalls != 2 {
+		t.Fatalf("Jev calls after routing = %d, want 2", gotCalls)
+	}
+
+	imageExec := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{Model: pluginIdentifier, SourceFormat: "chat-completions", OriginalRequest: imageBody, Headers: http.Header{"X-Session-ID": []string{sessionID}}}}
+	_, imageContext, _, err := decisionForExecutorWithContext(imageExec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !imageContext.hasImage {
+		t.Fatalf("image execution consumed non-image context: %+v", imageContext)
+	}
+
+	textExec := imageExec
+	textExec.OriginalRequest = textBody
+	_, textContext, _, err := decisionForExecutorWithContext(textExec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if textContext.hasImage {
+		t.Fatalf("text execution consumed image context: %+v", textContext)
+	}
+	mu.Lock()
+	gotCalls = jevCalls
+	mu.Unlock()
+	if gotCalls != 2 {
+		t.Fatalf("Jev calls after execution = %d, want exactly 2", gotCalls)
+	}
+}
+
+func TestPendingDuplicateRouteKeepsFirstDecision(t *testing.T) {
+	routineResponse := calibratedJevResponse(0.9, 0.5)
+	hardResponse := strings.Replace(routineResponse, `"0":0,"1":1,"2":0,"3":0,"4":0`, `"0":0,"1":0,"2":0,"3":1,"4":0`, 1)
+	var mu sync.Mutex
+	responses := []string{routineResponse, hardResponse}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		response := responses[0]
+		responses = responses[1:]
+		mu.Unlock()
+		_, _ = w.Write([]byte(response))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	store = session.New(time.Hour, 65536)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	body := []byte(`{"messages":[{"role":"user","content":"same request"}]}`)
+	request := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Headers: http.Header{"X-Session-ID": []string{"duplicate-session"}}, Body: body}
+	if _, err := routeModel(marshalRoute(t, request)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := routeModel(marshalRoute(t, request)); err != nil {
+		t.Fatal(err)
+	}
+	executor := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{Model: pluginIdentifier, SourceFormat: "chat-completions", OriginalRequest: body, Headers: request.Headers}}
+	decision, _, _, err := decisionForExecutorWithContext(executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.State.Difficulty != decide.Routine {
+		t.Fatalf("duplicate consumed newer decision: %#v", decision.State)
+	}
+}
+
+func TestPendingRoutesSeparateSourceFormats(t *testing.T) {
+	var mu sync.Mutex
+	jevCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		jevCalls++
+		mu.Unlock()
+		_, _ = w.Write([]byte(calibratedJevResponse(0.9, 0.5)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	store = session.New(time.Hour, 65536)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	chatBody := []byte(`{"messages":[{"role":"user","content":"describe"}]}`)
+	responseBody := []byte(`{"input":[{"role":"user","content":[{"type":"input_text","text":"describe"},{"type":"input_image","image_url":"https://example.invalid/image.png"}]}]}`)
+	chat := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Headers: http.Header{"X-Session-ID": []string{"format-session"}}, Body: chatBody}
+	responses := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "responses", Headers: chat.Headers, Body: responseBody}
+	if _, err := routeModel(marshalRoute(t, chat)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := routeModel(marshalRoute(t, responses)); err != nil {
+		t.Fatal(err)
+	}
+	chatExec := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{Model: pluginIdentifier, SourceFormat: chat.SourceFormat, OriginalRequest: chatBody, Headers: chat.Headers}}
+	_, chatContext, _, err := decisionForExecutorWithContext(chatExec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if chatContext.hasImage {
+		t.Fatalf("chat execution consumed responses context: %+v", chatContext)
+	}
+	responseExec := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{Model: pluginIdentifier, SourceFormat: responses.SourceFormat, OriginalRequest: responseBody, Headers: responses.Headers}}
+	_, responseContext, _, err := decisionForExecutorWithContext(responseExec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !responseContext.hasImage {
+		t.Fatalf("responses execution lost image context: %+v", responseContext)
+	}
+	mu.Lock()
+	gotCalls := jevCalls
+	mu.Unlock()
+	if gotCalls != 2 {
+		t.Fatalf("Jev calls after format-separated execution = %d, want exactly 2", gotCalls)
+	}
+}
+
+func TestMissingPendingRouteReclassifiesAndLogs(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(calibratedJevResponse(0.9, 0.5)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	store = session.New(time.Hour, 65536)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		Model:           pluginIdentifier,
+		SourceFormat:    "chat-completions",
+		OriginalRequest: []byte(`{"messages":[{"role":"user","content":"reclassify me"}]}`),
+		Headers:         http.Header{"X-Session-ID": []string{"missing-pending-session"}},
+	}}
+	decision, _, _, err := decisionForExecutorWithContext(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.Reason != "reclassified" {
+		t.Fatalf("decision reason = %q, want reclassified", decision.Reason)
+	}
+	if len(fake.logs) != 1 {
+		t.Fatalf("decision logs = %#v, want one reclassification log", fake.logs)
+	}
+	fields := decisionLogFields(t, fake.logs[0])
+	if fields["reason"] != "reclassified" {
+		t.Fatalf("reclassification log = %#v", fields)
+	}
+}
 func TestPendingRouteDecisionAndContextAreConsumedTogether(t *testing.T) {
 	configureTest(t)
 	pending = sync.Map{}
-	pending.Store("pending-id", pendingRoute{
-		decision: decide.Decision{Choice: decide.Choice{Model: "gpt-5.6-luna", Tier: "mid", Thinking: "high"}},
-		context:  routeContext{category: "backend", hasImage: true},
-	})
 	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
 		Model:           "auto-router",
 		SourceFormat:    "chat-completions",
 		OriginalRequest: []byte(`{"messages":[{"role":"user","content":"hello"}]}`),
 		Metadata:        map[string]any{"request_id": "pending-id"},
 	}}
+	key := requestKey(req.SourceFormat, req.Headers, req.OriginalRequest)
+	pending.Store(key, pendingRoute{
+		decision: decide.Decision{Choice: decide.Choice{Model: "gpt-5.6-luna", Tier: "mid", Thinking: "high"}},
+		context:  routeContext{category: "backend", hasImage: true},
+	})
 	decision, routeCtx, _, err := decisionForExecutorWithContext(req)
 	if err != nil {
 		t.Fatal(err)
@@ -402,7 +579,7 @@ func TestPendingRouteDecisionAndContextAreConsumedTogether(t *testing.T) {
 	if decision.Model != "gpt-5.6-luna" || routeCtx.category != "backend" || !routeCtx.hasImage {
 		t.Fatalf("pending route = decision=%+v context=%+v", decision, routeCtx)
 	}
-	if _, ok := pending.Load("pending-id"); ok {
+	if _, ok := pending.Load(key); ok {
 		t.Fatal("pending route was not consumed")
 	}
 }

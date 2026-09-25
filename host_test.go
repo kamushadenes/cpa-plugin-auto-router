@@ -151,12 +151,13 @@ func installFakeHost(t *testing.T, fake *fakeHostCalls) {
 
 func configureFailoverHostTest(t *testing.T) {
 	t.Helper()
+	t.Setenv("TEST_JEV_KEY", "")
 	path := t.TempDir() + "/models.yaml"
 	raw := []byte("benchmarks:\n  arena-overall: {source: test, unit: elo}\nmodels:\n  first:\n    tier: mid\n    vision: true\n    cost: {input: 1, output: 1}\n    scores: {}\n  second:\n    tier: mid\n    vision: true\n    cost: {input: 2, output: 2}\n    scores: {}\n  third:\n    tier: mid\n    vision: true\n    cost: {input: 3, output: 3}\n    scores: {}\n")
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	config, err := json.Marshal(lifecycleRequest{ConfigYAML: []byte("enabled: true\ntable_path: " + path + "\n")})
+	config, err := json.Marshal(lifecycleRequest{ConfigYAML: []byte("enabled: true\njev_api_key_env: TEST_JEV_KEY\njev_base_url: http://127.0.0.1:1\njev_timeout_ms: 20\ntable_path: " + path + "\n")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -175,7 +176,14 @@ func seedHostDecision(t *testing.T, sessionID, model string, streamID ...string)
 		State:  decide.State{Difficulty: decide.Routine, Model: model, Thinking: "high", Tier: "mid"},
 	}
 	_, _, generation := store.Begin(sessionID)
-	pending.Store(sessionID, pendingRoute{decision: decision, context: routeContext{
+	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		Model:           pluginIdentifier,
+		SourceFormat:    "chat-completions",
+		OriginalRequest: []byte(`{"messages":[{"role":"user","content":"retry me"}]}`),
+		Headers:         http.Header{"X-Session-ID": []string{sessionID}},
+	}}
+	key := requestKey(req.SourceFormat, req.Headers, req.OriginalRequest)
+	pending.Store(key, pendingRoute{decision: decision, context: routeContext{
 		category:             "backend",
 		factors:              decide.Factors{"touches_code": 1},
 		effortP:              decide.EffortDistribution{"0": 0, "1": 1, "2": 0, "3": 0, "4": 0},
@@ -185,12 +193,6 @@ func seedHostDecision(t *testing.T, sessionID, model string, streamID ...string)
 		difficulty:           decision.State.Difficulty,
 	}, generation: generation})
 	store.Put(sessionID, generation, decision.State)
-	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
-		Model:           pluginIdentifier,
-		SourceFormat:    "chat-completions",
-		OriginalRequest: []byte(`{"messages":[{"role":"user","content":"retry me"}]}`),
-		Headers:         http.Header{"X-Session-ID": []string{sessionID}},
-	}}
 	if len(streamID) > 0 {
 		req.StreamID = streamID[0]
 	}
@@ -316,7 +318,8 @@ func TestStaleEffectiveSessionDoesNotOverwriteVisionSwap(t *testing.T) {
 	if _, err := routeModel(marshalRoute(t, textRequest)); err != nil {
 		t.Fatal(err)
 	}
-	pendingValue, ok := pending.Load("same-tier-session")
+	key := requestKey(textRequest.SourceFormat, textRequest.Headers, textRequest.Body)
+	pendingValue, ok := pending.Load(key)
 	if !ok {
 		t.Fatal("older route decision missing")
 	}

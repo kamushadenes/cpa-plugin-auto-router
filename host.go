@@ -219,7 +219,7 @@ func decisionForExecutor(req rpcExecutorRequest) (decide.Decision, error) {
 }
 
 func decisionForExecutorWithContext(req rpcExecutorRequest) (decide.Decision, routeContext, uint64, error) {
-	key := requestKey(req.Headers, req.OriginalRequest, req.Metadata)
+	key := requestKey(req.SourceFormat, req.Headers, req.OriginalRequest)
 	if key != "" {
 		if value, ok := pending.LoadAndDelete(key); ok {
 			if route, ok := value.(pendingRoute); ok {
@@ -236,7 +236,7 @@ func decisionForExecutorWithContext(req rpcExecutorRequest) (decide.Decision, ro
 		Body:           req.OriginalRequest,
 		Metadata:       req.Metadata,
 	}
-	decision, _, routeCtx, err := decideForWithContext(request, prev, hasPrev)
+	decision, meta, routeCtx, err := decideForWithContext(request, prev, hasPrev)
 	if err != nil {
 		return decide.Decision{}, routeContext{}, 0, err
 	}
@@ -246,6 +246,11 @@ func decisionForExecutorWithContext(req rpcExecutorRequest) (decide.Decision, ro
 		if err != nil {
 			return decide.Decision{}, routeContext{}, 0, err
 		}
+	}
+	decision.Reason = "reclassified"
+	decision.Choice.Reason = "reclassified"
+	if _, err := routeResponse(req.HostCallbackID, sid, decision, meta); err != nil {
+		return decide.Decision{}, routeContext{}, 0, err
 	}
 	return decision, routeCtx, generation, nil
 }

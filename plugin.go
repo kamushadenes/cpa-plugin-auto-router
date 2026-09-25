@@ -316,9 +316,9 @@ func routeModel(raw []byte) ([]byte, error) {
 			return nil, err
 		}
 	}
-	key := requestKey(req.Headers, req.Body, req.Metadata)
+	key := requestKey(req.SourceFormat, req.Headers, req.Body)
 	if key != "" {
-		pending.Store(key, pendingRoute{decision: decision, context: routeCtx, generation: generation})
+		pending.LoadOrStore(key, pendingRoute{decision: decision, context: routeCtx, generation: generation})
 	}
 	return routeResponse(req.HostCallbackID, sid, decision, meta)
 }
@@ -441,13 +441,17 @@ func routeResponse(callbackID, sid string, decision decide.Decision, meta routeM
 	return okEnvelope(pluginapi.ModelRouteResponse{Handled: true, TargetKind: pluginapi.ModelRouteTargetSelf, Reason: decision.Reason})
 }
 
-func requestKey(headers http.Header, body []byte, metadata map[string]any) string {
-	if metadata != nil {
-		if value, ok := metadata["request_id"].(string); ok && strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
+func requestKey(sourceFormat string, headers http.Header, body []byte) string {
+	sid := session.ID(headers, body)
+	if sid == "" {
+		return ""
 	}
-	return session.ID(headers, body)
+	hashInput := make([]byte, 0, len(sourceFormat)+1+len(body))
+	hashInput = append(hashInput, sourceFormat...)
+	hashInput = append(hashInput, 0)
+	hashInput = append(hashInput, body...)
+	sum := sha256.Sum256(hashInput)
+	return sid + ":" + hex.EncodeToString(sum[:])
 }
 
 func stripThinkingSuffix(model string) string {
