@@ -239,11 +239,11 @@ func assertFailoverHeader(t *testing.T, header, model string, failed []string) {
 func assertFailoverLog(t *testing.T, fake *fakeHostCalls, model string, failed []string) {
 	t.Helper()
 	for _, logEntry := range fake.logs {
-		fields, ok := logEntry["fields"].(map[string]any)
-		if !ok || fields["model"] != model || fields["reason"] != "failover" {
+		fields := decisionLogFields(t, logEntry)
+		if fields["model"] != model || fields["reason"] != "failover" {
 			continue
 		}
-		got, ok := fields["failed_from"].([]string)
+		got, ok := fields["failed_from"].([]any)
 		if !ok || len(got) != len(failed) {
 			continue
 		}
@@ -257,9 +257,9 @@ func assertFailoverLog(t *testing.T, fake *fakeHostCalls, model string, failed [
 		if !matches {
 			continue
 		}
-		factors, factorsOK := fields["factors"].(decide.Factors)
-		effortP, effortOK := fields["effort_p"].(decide.EffortDistribution)
-		if !factorsOK || factors["touches_code"] != 1 || !effortOK || effortP["1"] != 1 || fields["effort_mean"] != float64(1) || fields["category_confidence"] != float64(1) || fields["difficulty_confidence"] != float64(1) {
+		factors, factorsOK := fields["factors"].(map[string]any)
+		effortP, effortOK := fields["effort_p"].(map[string]any)
+		if !factorsOK || factors["touches_code"] != float64(1) || !effortOK || effortP["1"] != float64(1) || fields["effort_mean"] != float64(1) || fields["category_confidence"] != float64(1) || fields["difficulty_confidence"] != float64(1) {
 			continue
 		}
 		if _, ok := fields["category_p"]; ok {
@@ -277,13 +277,13 @@ func TestFailoverLogUsesComposedLabelsBelowConfidenceThreshold(t *testing.T) {
 	fake := newFakeHostCalls()
 	installFakeHost(t, fake)
 	factors := decide.Factors{"touches_code": 0.9, "frontend": 0.1, "fix_existing": 0.1, "judges_existing": 0.1, "design_only": 0.1, "many_steps": 0.1, "transform_only": 0.1, "exact_answer": 0.1, "writes_tests": 0.1}
-	effort := decide.EffortDistribution{"0": 0, "1": 0.07, "2": 0.46, "3": 0.03, "4": 0.44}
+	effort := decide.EffortDistribution{"0": 0.30, "1": 0, "2": 0.10, "3": 0.35, "4": 0.25}
 	decision := decide.Decision{Choice: decide.Choice{Model: "model", Tier: "mid", Thinking: "high"}, Reason: "failover", State: decide.State{Difficulty: decide.Routine}}
-	ctx := routeContext{factors: factors, effortP: effort, effortMean: decide.EffortMean(effort), category: "", difficulty: decide.Routine, categoryConfidence: 0.5, difficultyConfidence: 0.03, confidence: 0.03}
+	ctx := routeContext{factors: factors, effortP: effort, effortMean: decide.EffortMean(effort), category: "", difficulty: decide.Routine, categoryConfidence: 0.5, difficultyConfidence: 0.45, confidence: 0.45}
 	logFailover(rpcExecutorRequest{}, decision, ctx, []string{"first"})
-	fields := fake.logs[0]["fields"].(map[string]any)
-	if fields["category"] != "backend" || fields["difficulty"] != decide.Hard {
-		t.Fatalf("logged failover labels = category=%#v difficulty=%#v", fields["category"], fields["difficulty"])
+	fields := decisionLogFields(t, fake.logs[0])
+	if fields["category"] != "backend" || fields["difficulty"] != decide.Hard || fields["model"] != "model" || fields["reason"] != "failover" {
+		t.Fatalf("logged failover = %#v", fields)
 	}
 }
 

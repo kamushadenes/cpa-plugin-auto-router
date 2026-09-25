@@ -1018,6 +1018,22 @@
    "expected": "extreme",
    "operator_label": "extreme",
    "jev_direct": "hard"
+  },
+  {
+   "id": "RLS-JOURNAL",
+   "request": "Design a zero-downtime migration plan to move a 40-table Postgres schema to RLS multi-tenancy; list risks and rollback.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.03,
+    "2": 0.49,
+    "3": 0.48,
+    "4": 0.0
+   },
+   "effort_mean": 2.45,
+   "expected": "hard",
+   "confidence": 0.97,
+   "operator_label": "hard",
+   "jev_direct": "hard"
   }
  ]
 }

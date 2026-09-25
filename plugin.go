@@ -412,7 +412,7 @@ func routeResponse(callbackID, sid string, decision decide.Decision, meta routeM
 	if err != nil {
 		return nil, err
 	}
-	hostLog(callbackID, "info", "auto-router decision "+string(payload), fields)
+	hostLog(callbackID, "info", string(payload), nil)
 	return okEnvelope(pluginapi.ModelRouteResponse{Handled: true, TargetKind: pluginapi.ModelRouteTargetSelf, Reason: decision.Reason})
 }
 

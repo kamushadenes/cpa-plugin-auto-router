@@ -112,9 +112,9 @@ func TestRouteLogsCalibratedMetadata(t *testing.T) {
 	if len(fake.logs) != 1 {
 		t.Fatalf("logs = %#v", fake.logs)
 	}
-	fields, ok := fake.logs[0]["fields"].(map[string]any)
-	if !ok {
-		t.Fatalf("log fields = %#v", fake.logs[0])
+	fields := decisionLogFields(t, fake.logs[0])
+	if fields["model"] == "" || fields["reason"] != "new" {
+		t.Fatalf("decision identity = model=%#v reason=%#v", fields["model"], fields["reason"])
 	}
 	for _, key := range []string{"factors", "effort_p", "effort_mean", "category_confidence", "difficulty_confidence"} {
 		if _, ok := fields[key]; !ok {
@@ -132,21 +132,44 @@ func TestRouteLogsComposedLabelsBelowConfidenceThreshold(t *testing.T) {
 	fake := newFakeHostCalls()
 	installFakeHost(t, fake)
 	factors := decide.Factors{"touches_code": 0.9, "frontend": 0.1, "fix_existing": 0.1, "judges_existing": 0.1, "design_only": 0.1, "many_steps": 0.1, "transform_only": 0.1, "exact_answer": 0.1, "writes_tests": 0.1}
-	effort := decide.EffortDistribution{"0": 0, "1": 0.07, "2": 0.46, "3": 0.03, "4": 0.44}
+	effort := decide.EffortDistribution{"0": 0.30, "1": 0, "2": 0.10, "3": 0.35, "4": 0.25}
 	decision := decide.Decision{Choice: decide.Choice{Model: "model", Tier: "mid", Thinking: "high"}, Reason: "new", State: decide.State{Difficulty: decide.Routine}}
-	meta := routeMeta{factors: factors, effortP: effort, effortMean: decide.EffortMean(effort), category: "", difficulty: decide.Routine, categoryConfidence: 0.5, difficultyConfidence: 0.03, confidence: 0.03}
+	meta := routeMeta{factors: factors, effortP: effort, effortMean: decide.EffortMean(effort), category: "", difficulty: decide.Routine, categoryConfidence: 0.5, difficultyConfidence: 0.45, confidence: 0.45}
 	if _, err := routeResponse("", "", decision, meta); err != nil {
 		t.Fatal(err)
 	}
-	fields := fake.logs[0]["fields"].(map[string]any)
+	fields := decisionLogFields(t, fake.logs[0])
 	if fields["category"] != "backend" || fields["difficulty"] != decide.Hard {
 		t.Fatalf("logged labels = category=%#v difficulty=%#v", fields["category"], fields["difficulty"])
 	}
 	logFailover(rpcExecutorRequest{}, decision, routeContext{factors: factors, effortP: effort, category: "", difficulty: decide.Routine}, []string{"failed-model"})
-	fields = fake.logs[1]["fields"].(map[string]any)
-	if fields["category"] != "backend" || fields["difficulty"] != decide.Hard {
-		t.Fatalf("failover labels = category=%#v difficulty=%#v", fields["category"], fields["difficulty"])
+	fields = decisionLogFields(t, fake.logs[1])
+	if fields["category"] != "backend" || fields["difficulty"] != decide.Hard || fields["model"] != "model" || fields["reason"] != "failover" {
+		t.Fatalf("failover log = %#v", fields)
 	}
+	failedFrom, ok := fields["failed_from"].([]any)
+	if !ok || len(failedFrom) != 1 || failedFrom[0] != "failed-model" {
+		t.Fatalf("failed_from = %#v", fields["failed_from"])
+	}
+}
+
+func decisionLogFields(t *testing.T, entry map[string]any) map[string]any {
+	t.Helper()
+	message, ok := entry["message"].(string)
+	if !ok {
+		t.Fatalf("log message = %#v", entry["message"])
+	}
+	var fields map[string]any
+	if err := json.Unmarshal([]byte(message), &fields); err != nil {
+		t.Fatalf("decision log message = %q: %v", message, err)
+	}
+	if structured, ok := entry["fields"]; ok {
+		fields, mapOK := structured.(map[string]any)
+		if !mapOK || len(fields) > 0 {
+			t.Fatalf("decision log has structured fields that append a host suffix: %#v", structured)
+		}
+	}
+	return fields
 }
 
 func TestRouteKeepsConfidenceFallbacksForNewAndExistingSessions(t *testing.T) {

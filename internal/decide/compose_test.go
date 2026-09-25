@@ -14,9 +14,10 @@ type composeFixtures struct {
 		Expected string             `json:"expected"`
 	} `json:"category"`
 	Difficulty []struct {
-		ID       string             `json:"id"`
-		EffortP  map[string]float64 `json:"effort_p"`
-		Expected string             `json:"expected"`
+		ID         string             `json:"id"`
+		EffortP    map[string]float64 `json:"effort_p"`
+		Expected   string             `json:"expected"`
+		Confidence *float64           `json:"confidence"`
 	} `json:"difficulty"`
 }
 
@@ -50,8 +51,8 @@ func TestCategoryFixtures(t *testing.T) {
 
 func TestDifficultyFixtures(t *testing.T) {
 	fixtures := loadComposeFixtures(t)
-	if len(fixtures.Difficulty) != 21 {
-		t.Fatalf("difficulty fixture count = %d, want 21", len(fixtures.Difficulty))
+	if len(fixtures.Difficulty) != 22 {
+		t.Fatalf("difficulty fixture count = %d, want 22", len(fixtures.Difficulty))
 	}
 	for _, fixture := range fixtures.Difficulty {
 		fixture := fixture
@@ -62,6 +63,11 @@ func TestDifficultyFixtures(t *testing.T) {
 			}
 			if got := EffortMean(p); math.Abs(got-meanFixture(p)) > 1e-12 {
 				t.Fatalf("EffortMean() = %v, want %v", got, meanFixture(p))
+			}
+			if fixture.Confidence != nil {
+				if got := DifficultyConfidence(p); math.Abs(got-*fixture.Confidence) > 1e-12 {
+					t.Fatalf("DifficultyConfidence() = %v, want %v", got, *fixture.Confidence)
+				}
 			}
 		})
 	}
@@ -142,12 +148,36 @@ func TestDifficultyBoundariesAndConfidenceMass(t *testing.T) {
 		want string
 		conf float64
 	}{
-		{"trivial below .5", EffortDistribution{"0": .6, "1": .4}, "trivial", .6},
+		{"trivial below .5, no bump", EffortDistribution{"0": .7505, "2": .2495}, "trivial", .7505},
 		{"routine at .5", EffortDistribution{"0": .5, "1": .5}, "routine", .5},
 		{"routine below 2", EffortDistribution{"0": .01, "1": .49, "2": .5}, "routine", .99},
-		{"hard at 2", EffortDistribution{"0": 0, "2": 1}, "hard", 0},
+		{"hard at 2", EffortDistribution{"0": 0, "2": 1}, "hard", 1},
 		{"hard below 3.1", EffortDistribution{"3": .999, "4": .001}, "hard", .999},
 		{"extreme at 3.1", EffortDistribution{"3": .9, "4": .1}, "extreme", .1},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := Difficulty(test.p); got != test.want {
+				t.Fatalf("Difficulty() = %q, want %q", got, test.want)
+			}
+			if got := DifficultyConfidence(test.p); math.Abs(got-test.conf) > 1e-12 {
+				t.Fatalf("DifficultyConfidence() = %v, want %v", got, test.conf)
+			}
+		})
+	}
+}
+
+func TestDifficultySplitBumps(t *testing.T) {
+	tests := []struct {
+		name string
+		p    EffortDistribution
+		want string
+		conf float64
+	}{
+		{"trivial to routine", EffortDistribution{"0": .6, "1": .4}, Routine, .4},
+		{"routine mean 1.9, no bump", EffortDistribution{"1": .4, "2": .3, "3": .3}, Routine, .7},
+		{"routine to hard", EffortDistribution{"1": .65, "3": .35}, Hard, .35},
+		{"hard to extreme", EffortDistribution{"2": .3, "3": .35, "4": .35}, Extreme, .7},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

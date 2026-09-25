@@ -107,12 +107,20 @@ são `trivial` para `E < 0,5`, `routine` para `E < 2`, `hard` para `E < 3,1`
 e `extreme` nos demais casos. Sem `probabilities`, um `score` inteiro de 0 a 4
 gera uma distribuição com probabilidade 1 nesse nível.
 
+Depois dos cortes, uma massa de pelo menos `0,35` no próximo nível provoca
+uma única escalada: `p1` leva `trivial` a `routine`, `p3` leva `routine` a
+`hard`, e `p4` leva `hard` a `extreme`. A regra usa o rótulo original da
+média e não repete a escalada.
+
 A confiança de categoria usa o mínimo dos fatores que sustentam a regra
 vencedora; condições negativas usam `1-p`. Comparações entre fatores definem
 prioridade. Para `writing`, a confiança é `1-max(fatores)`. A confiança de
-dificuldade soma as massas dos níveis `{0}`, `{1,2}`, `{3}` ou `{4}`,
-respectivamente. Os testes usam 39 casos de categoria e 21 de dificuldade
-em `internal/decide/testdata/jev_fixtures.json`, sem chamadas de rede.
+dificuldade usa `p0` para `trivial`, `p1+p2` para `routine`, `p2+p3` para
+`hard` e `p4` para `extreme`. Se `extreme` veio da escalada, soma também
+`p3`. O caso RLS com `{1:0,03, 2:0,49, 3:0,48}` permanece `hard`, com
+confiança `0,97`. Os testes preservam os 39 casos de categoria e 21 de
+dificuldade originais, acrescentam esse caso do journal e cobrem as três
+escaladas, sem chamadas de rede.
 
 Abaixo de `confidence_threshold` (padrão 0,6), categoria usa ranking geral;
 dificuldade usa `routine` em sessão nova ou mantém a dificuldade da sessão.
@@ -376,6 +384,8 @@ o modelo preserva o cache de prompt, que domina o custo real.
   `category_confidence`, `difficulty_confidence`, `confidence`, `tier`,
   `model`, `thinking`, `reason` e `jev_ms`. Em failover, `failed_from`
   registra os modelos excluídos e `model` identifica o modelo efetivo.
+  A mensagem enviada ao host é apenas o objeto JSON, sem prefixo nem campos
+  estruturados duplicados que acrescentem um sufixo após o objeto.
 - Header de resposta `X-Auto-Router: <model>(<thinking>);<reason>` via
   `ExecutorResponse.Headers`, para ver no cliente quem respondeu sem abrir log.
 - `plugin.register` expõe `ConfigFields`: `enabled`, `jev_api_key_env`,

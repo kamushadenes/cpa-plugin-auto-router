@@ -420,7 +420,7 @@ func logFailover(req rpcExecutorRequest, decision decide.Decision, routeCtx rout
 		"failed_from":           append([]string(nil), failed...),
 	}
 	payload, _ := json.Marshal(fields)
-	hostLog(req.HostCallbackID, "info", "auto-router decision "+string(payload), fields)
+	hostLog(req.HostCallbackID, "info", string(payload), nil)
 }
 
 // ponytail: match transport errors by text on this host version; switch to numeric status if a future host exposes it.

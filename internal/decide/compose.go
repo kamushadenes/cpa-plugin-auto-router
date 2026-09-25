@@ -120,30 +120,58 @@ func EffortMean(p EffortDistribution) float64 {
 
 // Difficulty maps expected effort to the calibrated difficulty label.
 func Difficulty(p EffortDistribution) string {
+	label, _ := difficultyLabel(p)
+	return label
+}
+
+// difficultyLabel returns the final label and whether a one-step bump applied.
+func difficultyLabel(p EffortDistribution) (string, bool) {
 	mean := EffortMean(p)
-	// ponytail: cuts calibrated on 21 cases; re-run the fixtures before moving them.
+	// ponytail: cuts and .35 bump threshold calibrated on 21 fixtures plus the RLS journal case.
+	var label string
 	switch {
 	case mean < 0.5:
-		return Trivial
+		label = Trivial
 	case mean < 2:
-		return Routine
+		label = Routine
 	case mean < 3.1:
-		return Hard
+		label = Hard
 	default:
-		return Extreme
+		label = Extreme
 	}
+
+	switch label {
+	case Trivial:
+		if p["1"] >= 0.35 {
+			return Routine, true
+		}
+	case Routine:
+		if p["3"] >= 0.35 {
+			return Hard, true
+		}
+	case Hard:
+		if p["4"] >= 0.35 {
+			return Extreme, true
+		}
+	}
+	return label, false
 }
 
 // DifficultyConfidence returns the probability mass supporting the label.
 func DifficultyConfidence(p EffortDistribution) float64 {
-	switch Difficulty(p) {
+	label, bumped := difficultyLabel(p)
+	switch label {
 	case Trivial:
 		return p["0"]
 	case Routine:
 		return p["1"] + p["2"]
 	case Hard:
-		return p["3"]
+		return p["2"] + p["3"]
 	default:
-		return p["4"]
+		confidence := p["4"]
+		if bumped {
+			confidence += p["3"]
+		}
+		return confidence
 	}
 }
