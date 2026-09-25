@@ -301,7 +301,7 @@ func waitPluginClose(t *testing.T, fake *fakeHostCalls) rpcStreamCloseRequest {
 	}
 }
 
-func TestStaleEffectiveSessionDoesNotOverwriteVisionSwap(t *testing.T) {
+func TestSameFloorStaleEffectiveSessionAllowsModelUpdateAndPreservesVisionRouting(t *testing.T) {
 	configureTest(t)
 	store = session.New(time.Hour, 65536)
 	fake := newFakeHostCalls()
@@ -345,8 +345,80 @@ func TestStaleEffectiveSessionDoesNotOverwriteVisionSwap(t *testing.T) {
 		Headers:         textRequest.Headers,
 	}}, older, olderRoute.generation)
 	state, ok = store.Get("same-tier-session")
+	if !ok || state.Model != "blind" || state.Tier != "top" || state.Thinking != "xhigh" {
+		t.Fatalf("same-floor stale completion was not accepted = %#v, present=%v", state, ok)
+	}
+
+	nextImageRequest := imageRequest
+	nextImageRequest.Body = []byte(`{"messages":[{"role":"user","content":[{"type":"text","text":"look at the next image"},{"type":"image_url","image_url":{"url":"https://example.invalid/next.png"}}]}]}`)
+	raw, err := routeModel(marshalRoute(t, nextImageRequest))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := decodeRouteResponse(t, raw)
+	if !response.Handled || response.Reason != "model-gone" {
+		t.Fatalf("next image route response = %+v", response)
+	}
+	state, ok = store.Get("same-tier-session")
 	if !ok || state.Model != "eyes" || state.Tier != "top" || state.Thinking != "xhigh" {
-		t.Fatalf("stale completion replaced newer model = %#v, present=%v", state, ok)
+		t.Fatalf("next image route state = %#v, present=%v", state, ok)
+	}
+}
+
+func TestFailoverPersistsAfterLaterRoute(t *testing.T) {
+	configureFailoverHostTest(t)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.executeResponses["first"] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusTooManyRequests, Body: []byte(`{"error":"rate limit"}`)}
+	fake.executeResponses["second"] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusOK, Body: []byte(`{"ok":true}`)}
+
+	request := pluginapi.ModelRouteRequest{
+		RequestedModel: pluginIdentifier,
+		SourceFormat:   "chat-completions",
+		Headers:        http.Header{"X-Session-ID": []string{"later-route-session"}},
+		Body:           []byte(`{"messages":[{"role":"user","content":"retry me"}]}`),
+	}
+	if _, err := routeModel(marshalRoute(t, request)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := routeModel(marshalRoute(t, request)); err != nil {
+		t.Fatal(err)
+	}
+
+	executor := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		Model:           pluginIdentifier,
+		SourceFormat:    request.SourceFormat,
+		OriginalRequest: request.Body,
+		Headers:         request.Headers,
+	}}
+	raw, err := json.Marshal(executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := execute(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, response := decodeHostEnvelope(t, result)
+	if !env.OK || string(response.Payload) != `{"ok":true}` {
+		t.Fatalf("execute response = %#v, envelope = %#v", response, env)
+	}
+	assertFailoverHeader(t, response.Headers.Get("X-Auto-Router"), "second", []string{"first"})
+
+	effective, ok := store.Get("later-route-session")
+	if !ok || effective.Model != "second" {
+		t.Fatalf("effective session state = %#v, present=%v", effective, ok)
+	}
+	table, err := loadedTable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := decide.Next(decide.Input{Table: table, Difficulty: decide.Routine}, effective, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if next.Reason != "keep" || next.Model != "second" {
+		t.Fatalf("next decision = %#v, want keep second", next)
 	}
 }
 

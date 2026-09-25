@@ -15,7 +15,6 @@ import (
 type entry struct {
 	state           decide.State
 	at              time.Time
-	generation      uint64
 	firstGeneration uint64
 	ready           bool
 }
@@ -54,11 +53,10 @@ func (s *Store) Begin(id string) (decide.State, bool, uint64) {
 		ok = false
 	}
 	if !ok {
-		s.entries[id] = entry{at: now, generation: generation, firstGeneration: generation}
+		s.entries[id] = entry{at: now, firstGeneration: generation}
 		s.evictLocked()
 		return decide.State{}, false, generation
 	}
-	e.generation = generation
 	e.at = now
 	s.entries[id] = e
 	return e.state, e.ready, generation
@@ -94,7 +92,7 @@ func (s *Store) Put(id string, generation uint64, state decide.State) decide.Sta
 	if !ok || (s.ttl > 0 && now.Sub(e.at) >= s.ttl) || generation < e.firstGeneration {
 		return decide.State{}
 	}
-	e.state = mergeState(e.state, state, e.generation, generation)
+	e.state = mergeState(e.state, state)
 	e.ready = true
 	e.at = now
 	s.entries[id] = e
@@ -116,34 +114,26 @@ func (s *Store) evictLocked() {
 	}
 }
 
-func mergeState(stored, incoming decide.State, storedGeneration, incomingGeneration uint64) decide.State {
+func mergeState(stored, incoming decide.State) decide.State {
 	merged := stored
-	floorRaised := false
-	merged.Difficulty, floorRaised = maxFloorValue(merged.Difficulty, incoming.Difficulty, difficultyRank)
-	var raised bool
-	merged.Tier, raised = maxFloorValue(merged.Tier, incoming.Tier, tierRank)
-	floorRaised = floorRaised || raised
-	merged.Thinking, raised = maxFloorValue(merged.Thinking, incoming.Thinking, thinkingRank)
-	floorRaised = floorRaised || raised
+	merged.Difficulty = maxFloorValue(merged.Difficulty, incoming.Difficulty, difficultyRank)
+	merged.Tier = maxFloorValue(merged.Tier, incoming.Tier, tierRank)
+	merged.Thinking = maxFloorValue(merged.Thinking, incoming.Thinking, thinkingRank)
 
-	if incoming.Model == "" {
-		return merged
-	}
-	incomingAtMergedFloor := stateFloorAtLeast(incoming, merged)
-	if incomingAtMergedFloor && (floorRaised || incomingGeneration >= storedGeneration) {
+	if incoming.Model != "" && stateFloorAtLeast(incoming, merged) {
 		merged.Model = incoming.Model
 	}
 	return merged
 }
 
-func maxFloorValue(current, incoming string, rank func(string) int) (string, bool) {
+func maxFloorValue(current, incoming string, rank func(string) int) string {
 	if current == "" && incoming != "" {
-		return incoming, true
+		return incoming
 	}
 	if rank(incoming) > rank(current) {
-		return incoming, true
+		return incoming
 	}
-	return current, false
+	return current
 }
 
 func stateFloorAtLeast(a, b decide.State) bool {
