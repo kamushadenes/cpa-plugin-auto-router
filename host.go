@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/session"
@@ -21,21 +22,30 @@ type hostModelExecutionRequest struct {
 }
 
 type pluginStreamLifecycle struct {
-	mu       sync.Mutex
-	active   int
-	closing  bool
-	done     chan struct{}
-	doneOnce bool
+	mu             sync.Mutex
+	active         int
+	closing        bool
+	streams        map[string]struct{}
+	closingStreams int
+	done           chan struct{}
+	doneOnce       bool
 }
 
 func newPluginStreamLifecycle() *pluginStreamLifecycle {
-	return &pluginStreamLifecycle{done: make(chan struct{})}
+	return &pluginStreamLifecycle{streams: make(map[string]struct{}), done: make(chan struct{})}
 }
 
 var (
 	streamLifecycle = newPluginStreamLifecycle()
 	hostCall        = callHost
 )
+
+func finishPluginShutdownLocked() {
+	if streamLifecycle.closing && streamLifecycle.active == 0 && streamLifecycle.closingStreams == 0 && !streamLifecycle.doneOnce {
+		close(streamLifecycle.done)
+		streamLifecycle.doneOnce = true
+	}
+}
 
 func beginPluginStream() bool {
 	streamLifecycle.mu.Lock()
@@ -53,25 +63,80 @@ func endPluginStream() {
 	if streamLifecycle.active > 0 {
 		streamLifecycle.active--
 	}
-	if streamLifecycle.closing && streamLifecycle.active == 0 && !streamLifecycle.doneOnce {
-		close(streamLifecycle.done)
-		streamLifecycle.doneOnce = true
+	finishPluginShutdownLocked()
+}
+
+func finishPluginHostStreamClose(streamID string) {
+	_ = closeHostModelStream(streamID)
+	streamLifecycle.mu.Lock()
+	if streamLifecycle.closingStreams > 0 {
+		streamLifecycle.closingStreams--
+	}
+	finishPluginShutdownLocked()
+	streamLifecycle.mu.Unlock()
+}
+
+func registerPluginHostStream(streamID string) bool {
+	streamID = strings.TrimSpace(streamID)
+	if streamID == "" {
+		return false
+	}
+	streamLifecycle.mu.Lock()
+	if streamLifecycle.closing {
+		streamLifecycle.closingStreams++
+		streamLifecycle.mu.Unlock()
+		go finishPluginHostStreamClose(streamID)
+		return false
+	}
+	streamLifecycle.streams[streamID] = struct{}{}
+	streamLifecycle.mu.Unlock()
+	return true
+}
+
+func closeRegisteredPluginHostStream(streamID string) {
+	streamID = strings.TrimSpace(streamID)
+	if streamID == "" {
+		return
+	}
+	streamLifecycle.mu.Lock()
+	_, owned := streamLifecycle.streams[streamID]
+	if owned {
+		delete(streamLifecycle.streams, streamID)
+	}
+	streamLifecycle.mu.Unlock()
+	if owned {
+		_ = closeHostModelStream(streamID)
 	}
 }
 
 func beginPluginShutdown() <-chan struct{} {
 	streamLifecycle.mu.Lock()
-	defer streamLifecycle.mu.Unlock()
 	streamLifecycle.closing = true
-	if streamLifecycle.active == 0 && !streamLifecycle.doneOnce {
-		close(streamLifecycle.done)
-		streamLifecycle.doneOnce = true
+	streams := make([]string, 0, len(streamLifecycle.streams))
+	for streamID := range streamLifecycle.streams {
+		streams = append(streams, streamID)
+		delete(streamLifecycle.streams, streamID)
 	}
-	return streamLifecycle.done
+	streamLifecycle.closingStreams += len(streams)
+	finishPluginShutdownLocked()
+	done := streamLifecycle.done
+	streamLifecycle.mu.Unlock()
+	for _, streamID := range streams {
+		go finishPluginHostStreamClose(streamID)
+	}
+	return done
 }
 
+// ponytail: fixed 10s drain ceiling; host callbacks have no cancellation contract.
+const pluginShutdownDrainTimeout = 10 * time.Second
+
 func waitPluginShutdown(done <-chan struct{}) {
-	<-done
+	timer := time.NewTimer(pluginShutdownDrainTimeout)
+	defer timer.Stop()
+	select {
+	case <-done:
+	case <-timer.C:
+	}
 }
 
 func execute(raw []byte) ([]byte, error) {
@@ -306,19 +371,22 @@ func openHostStream(ctx context.Context, req rpcExecutorRequest, model string) (
 	if strings.TrimSpace(response.StreamID) == "" {
 		return hostStreamReady{}, errors.New("host model stream has no stream id")
 	}
+	if !registerPluginHostStream(response.StreamID) {
+		return hostStreamReady{}, errors.New("plugin is shutting down")
+	}
 	for {
 		chunkRaw, err := hostCall(pluginabi.MethodHostModelStreamRead, pluginapi.HostModelStreamReadRequest{StreamID: response.StreamID})
 		if err != nil {
-			_ = closeHostModelStream(response.StreamID)
+			closeRegisteredPluginHostStream(response.StreamID)
 			return hostStreamReady{}, err
 		}
 		var chunk pluginapi.HostModelStreamReadResponse
 		if err := json.Unmarshal(chunkRaw, &chunk); err != nil {
-			_ = closeHostModelStream(response.StreamID)
+			closeRegisteredPluginHostStream(response.StreamID)
 			return hostStreamReady{}, err
 		}
 		if chunk.Error != "" {
-			_ = closeHostModelStream(response.StreamID)
+			closeRegisteredPluginHostStream(response.StreamID)
 			return hostStreamReady{}, errors.New(chunk.Error)
 		}
 		if len(chunk.Payload) > 0 {
@@ -331,7 +399,7 @@ func openHostStream(ctx context.Context, req rpcExecutorRequest, model string) (
 }
 
 func continueHostStream(ctx context.Context, ready hostStreamReady, pluginStreamID string) error {
-	defer func() { _ = closeHostModelStream(ready.streamID) }()
+	defer closeRegisteredPluginHostStream(ready.streamID)
 	if len(ready.firstPayload) > 0 {
 		if err := emitPluginStreamChunk(pluginStreamID, ready.firstPayload); err != nil {
 			return err

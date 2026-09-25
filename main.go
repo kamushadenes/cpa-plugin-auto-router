@@ -3,6 +3,7 @@ package main
 /*
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 
 typedef struct {
 	void* ptr;
@@ -34,22 +35,37 @@ extern int cliproxyPluginCall(char*, uint8_t*, size_t, cliproxy_buffer*);
 extern void cliproxyPluginFree(void*, size_t);
 extern void cliproxyPluginShutdown(void);
 
-static const cliproxy_host_api* stored_host;
+static cliproxy_host_api stored_host;
+static _Atomic int host_enabled;
 
 static void store_host_api(const cliproxy_host_api* host) {
-	stored_host = host;
+	if (host == NULL) {
+		atomic_store_explicit(&host_enabled, 0, memory_order_release);
+		return;
+	}
+	stored_host = *host;
+	atomic_store_explicit(&host_enabled, 1, memory_order_release);
+}
+
+static void clear_host_api(void) {
+	atomic_store_explicit(&host_enabled, 0, memory_order_release);
 }
 
 static int call_host_api(const char* method, const uint8_t* request, size_t request_len, cliproxy_buffer* response) {
-	if (stored_host == NULL || stored_host->call == NULL) {
+	if (!atomic_load_explicit(&host_enabled, memory_order_acquire)) {
 		return 1;
 	}
-	return stored_host->call(stored_host->host_ctx, method, request, request_len, response);
+	cliproxy_host_call_fn call = stored_host.call;
+	void* host_ctx = stored_host.host_ctx;
+	if (call == NULL) {
+		return 1;
+	}
+	return call(host_ctx, method, request, request_len, response);
 }
 
 static void free_host_buffer(void* ptr, size_t len) {
-	if (stored_host != NULL && stored_host->free_buffer != NULL && ptr != NULL) {
-		stored_host->free_buffer(ptr, len);
+	if (ptr != NULL && stored_host.free_buffer != NULL) {
+		stored_host.free_buffer(ptr, len);
 	}
 }
 */
@@ -122,6 +138,8 @@ func cliproxyPluginFree(ptr unsafe.Pointer, _ C.size_t) {
 //export cliproxyPluginShutdown
 func cliproxyPluginShutdown() {
 	waitPluginShutdown(beginPluginShutdown())
+	// The ABI cannot cancel a callback already inside the host; clear the gate before unload to block new callbacks.
+	C.clear_host_api()
 }
 
 func callHost(method string, payload any) (json.RawMessage, error) {
