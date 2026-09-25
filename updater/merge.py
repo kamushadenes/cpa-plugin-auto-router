@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field, is_dataclass
 from datetime import date, datetime, timezone
 import copy
 import logging
+import math
 from pathlib import Path
 import os
 import tempfile
@@ -114,11 +115,13 @@ def _raw(value: Any) -> dict[str, Any]:
         raise ValidationError("table must be a mapping or Table")
     return copy.deepcopy(dict(value))
 
-
 def _number(value: Any, field_name: str) -> float:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         raise ValidationError(f"{field_name} must be numeric")
-    return float(value)
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValidationError(f"{field_name} must be finite")
+    return result
 
 
 def validate(value: Any) -> None:

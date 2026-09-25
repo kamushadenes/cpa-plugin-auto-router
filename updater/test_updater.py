@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import pytest
@@ -157,12 +158,20 @@ def test_summary_counts_replaced_score_as_updated_not_dropped():
 @pytest.mark.parametrize(
     "score",
     [
-        {"effort": None, "value": 1, "margin": 0},
+        {"effort": None, "margin": 0, "date": "2026-09-24"},
+        {"effort": None, "value": None, "margin": 0, "date": "2026-09-24"},
+        {"effort": None, "value": math.nan, "margin": 0, "date": "2026-09-24"},
+        {"effort": None, "value": math.inf, "margin": 0, "date": "2026-09-24"},
+        {"effort": None, "value": -math.inf, "margin": 0, "date": "2026-09-24"},
         {"effort": None, "value": 1, "date": "2026-09-24"},
+        {"effort": None, "value": 1, "margin": None, "date": "2026-09-24"},
+        {"effort": None, "value": 1, "margin": math.nan, "date": "2026-09-24"},
+        {"effort": None, "value": 1, "margin": math.inf, "date": "2026-09-24"},
+        {"effort": None, "value": 1, "margin": -math.inf, "date": "2026-09-24"},
         {"effort": None, "value": 1, "margin": -1, "date": "2026-09-24"},
     ],
 )
-def test_validate_rejects_missing_or_negative_score_fields(score):
+def test_validate_rejects_invalid_numeric_score_fields(score):
     value = {
         "benchmarks": {"x": {"source": "s", "unit": "pct"}},
         "models": {
@@ -176,6 +185,79 @@ def test_validate_rejects_missing_or_negative_score_fields(score):
     }
     with pytest.raises(merge.ValidationError):
         merge.validate(value)
+
+
+def test_validate_accepts_zero_value_and_margin():
+    merge.validate(
+        {
+            "benchmarks": {"x": {"source": "s", "unit": "pct"}},
+            "models": {
+                "m": {
+                    "tier": "top",
+                    "vision": True,
+                    "cost": {"input": 1, "output": 1},
+                    "scores": {
+                        "x": [{"effort": None, "value": 0, "margin": 0, "date": "2026-09-24"}]
+                    },
+                }
+            },
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    "score",
+    [
+        {"effort": None, "margin": 0, "date": "2026-09-24"},
+        {"effort": None, "value": None, "margin": 0, "date": "2026-09-24"},
+        {"effort": None, "value": math.nan, "margin": 0, "date": "2026-09-24"},
+        {"effort": None, "value": math.inf, "margin": 0, "date": "2026-09-24"},
+        {"effort": None, "value": -math.inf, "margin": 0, "date": "2026-09-24"},
+        {"effort": None, "value": 1, "margin": None, "date": "2026-09-24"},
+        {"effort": None, "value": 1, "margin": math.nan, "date": "2026-09-24"},
+        {"effort": None, "value": 1, "margin": math.inf, "date": "2026-09-24"},
+        {"effort": None, "value": 1, "margin": -math.inf, "date": "2026-09-24"},
+        {"effort": None, "value": 1, "margin": -1, "date": "2026-09-24"},
+    ],
+)
+def test_write_atomic_rejects_invalid_numeric_scores_without_publishing(tmp_path, score):
+    out = tmp_path / "models.yaml"
+    out.write_bytes(b"sentinel\n")
+    value = {
+        "benchmarks": {"x": {"source": "s", "unit": "pct"}},
+        "models": {
+            "m": {
+                "tier": "top",
+                "vision": True,
+                "cost": {"input": 1, "output": 1},
+                "scores": {"x": [score]},
+            }
+        },
+    }
+    with pytest.raises(merge.ValidationError):
+        merge.write_atomic(out, value)
+    assert out.read_bytes() == b"sentinel\n"
+
+
+def test_write_atomic_accepts_zero_value_and_margin(tmp_path):
+    out = tmp_path / "models.yaml"
+    merge.write_atomic(
+        out,
+        {
+            "benchmarks": {"x": {"source": "s", "unit": "pct"}},
+            "models": {
+                "m": {
+                    "tier": "top",
+                    "vision": True,
+                    "cost": {"input": 1, "output": 1},
+                    "scores": {
+                        "x": [{"effort": None, "value": 0, "margin": 0, "date": "2026-09-24"}]
+                    },
+                }
+            },
+        },
+    )
+    assert yaml.safe_load(out.read_text())["models"]["m"]["scores"]["x"][0]["value"] == 0
 
 
 def test_write_atomic_serializes_without_dataclass_internals(tmp_path):

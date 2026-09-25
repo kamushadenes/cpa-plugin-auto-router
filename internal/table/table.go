@@ -3,6 +3,7 @@ package table
 import (
 	"fmt"
 	"log"
+	"math"
 	"os"
 	"sync"
 	"time"
@@ -17,13 +18,14 @@ type Score struct {
 	Date   string  `yaml:"date"`
 	Note   string  `yaml:"note,omitempty"`
 
+	valueSet  bool
 	marginSet bool
 }
 
 func (s *Score) UnmarshalYAML(node *yaml.Node) error {
 	var raw struct {
 		Effort *string  `yaml:"effort"`
-		Value  float64  `yaml:"value"`
+		Value  *float64 `yaml:"value"`
 		Margin *float64 `yaml:"margin"`
 		Date   *string  `yaml:"date"`
 		Note   string   `yaml:"note,omitempty"`
@@ -35,7 +37,11 @@ func (s *Score) UnmarshalYAML(node *yaml.Node) error {
 	if raw.Effort != nil {
 		s.Effort = *raw.Effort
 	}
-	s.Value = raw.Value
+	s.Value = 0
+	s.valueSet = raw.Value != nil
+	if raw.Value != nil {
+		s.Value = *raw.Value
+	}
 	s.Margin = 0
 	s.marginSet = raw.Margin != nil
 	if raw.Margin != nil {
@@ -104,8 +110,17 @@ func Load(path string) (*Table, error) {
 				if _, err := time.Parse("2006-01-02", score.Date); err != nil {
 					return nil, fmt.Errorf("%s: model %s: score in %s has invalid date %q", path, id, benchmark, score.Date)
 				}
+				if !score.valueSet {
+					return nil, fmt.Errorf("%s: model %s: score in %s has no value", path, id, benchmark)
+				}
 				if !score.marginSet {
 					return nil, fmt.Errorf("%s: model %s: score in %s has no margin", path, id, benchmark)
+				}
+				if math.IsNaN(score.Value) || math.IsInf(score.Value, 0) {
+					return nil, fmt.Errorf("%s: model %s: score in %s has non-finite value %v", path, id, benchmark, score.Value)
+				}
+				if math.IsNaN(score.Margin) || math.IsInf(score.Margin, 0) {
+					return nil, fmt.Errorf("%s: model %s: score in %s has non-finite margin %v", path, id, benchmark, score.Margin)
 				}
 				if score.Margin < 0 {
 					return nil, fmt.Errorf("%s: model %s: score in %s has negative margin %v", path, id, benchmark, score.Margin)

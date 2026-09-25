@@ -35,6 +35,87 @@ models:
 	}
 }
 
+func TestLoadRejectsInvalidNumericScores(t *testing.T) {
+	cases := []struct {
+		name  string
+		score string
+	}{
+		{name: "missing-value", score: "{effort: low, margin: 0, date: 2026-09-24}"},
+		{name: "null-value", score: "{effort: low, value: null, margin: 0, date: 2026-09-24}"},
+		{name: "nan-value", score: "{effort: low, value: .nan, margin: 0, date: 2026-09-24}"},
+		{name: "positive-infinity-value", score: "{effort: low, value: .inf, margin: 0, date: 2026-09-24}"},
+		{name: "negative-infinity-value", score: "{effort: low, value: -.inf, margin: 0, date: 2026-09-24}"},
+		{name: "missing-margin", score: "{effort: low, value: 1, date: 2026-09-24}"},
+		{name: "null-margin", score: "{effort: low, value: 1, margin: null, date: 2026-09-24}"},
+		{name: "nan-margin", score: "{effort: low, value: 1, margin: .nan, date: 2026-09-24}"},
+		{name: "positive-infinity-margin", score: "{effort: low, value: 1, margin: .inf, date: 2026-09-24}"},
+		{name: "negative-infinity-margin", score: "{effort: low, value: 1, margin: -.inf, date: 2026-09-24}"},
+		{name: "negative-margin", score: "{effort: low, value: 1, margin: -1, date: 2026-09-24}"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			p := t.TempDir() + "/models.yaml"
+			if err := os.WriteFile(p, []byte(numericScoreTable(tc.score)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := Load(p); err == nil {
+				t.Fatal("expected invalid numeric score to be rejected")
+			}
+		})
+	}
+}
+
+func TestWatchKeepsOldOnInvalidNumericReload(t *testing.T) {
+	cases := []struct {
+		name  string
+		score string
+	}{
+		{name: "missing-value", score: "{effort: low, margin: 0, date: 2026-09-24}"},
+		{name: "null-value", score: "{effort: low, value: null, margin: 0, date: 2026-09-24}"},
+		{name: "nan-value", score: "{effort: low, value: .nan, margin: 0, date: 2026-09-24}"},
+		{name: "positive-infinity-value", score: "{effort: low, value: .inf, margin: 0, date: 2026-09-24}"},
+		{name: "negative-infinity-value", score: "{effort: low, value: -.inf, margin: 0, date: 2026-09-24}"},
+		{name: "missing-margin", score: "{effort: low, value: 1, date: 2026-09-24}"},
+		{name: "null-margin", score: "{effort: low, value: 1, margin: null, date: 2026-09-24}"},
+		{name: "nan-margin", score: "{effort: low, value: 1, margin: .nan, date: 2026-09-24}"},
+		{name: "positive-infinity-margin", score: "{effort: low, value: 1, margin: .inf, date: 2026-09-24}"},
+		{name: "negative-infinity-margin", score: "{effort: low, value: 1, margin: -.inf, date: 2026-09-24}"},
+		{name: "negative-margin", score: "{effort: low, value: 1, margin: -1, date: 2026-09-24}"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			p := dir + "/models.yaml"
+			good := numericScoreTable("{effort: low, value: 42, margin: 0, date: 2026-09-24}")
+			if err := os.WriteFile(p, []byte(good), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			w, err := Watch(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			first := w.Get()
+			if err := os.WriteFile(p, []byte(numericScoreTable(tc.score)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			changed := time.Now().Add(time.Hour)
+			if err := os.Chtimes(p, changed, changed); err != nil {
+				t.Fatal(err)
+			}
+			if got := w.Get(); got != first {
+				t.Fatal("invalid reload replaced previous valid table")
+			}
+			if got := first.Models["m"].Scores["bench"][0].Value; got != 42 {
+				t.Fatalf("previous value = %v, want 42", got)
+			}
+		})
+	}
+}
+
+func numericScoreTable(score string) string {
+	return "benchmarks: {bench: {source: s, unit: pct}}\nmodels:\n  m:\n    tier: flash\n    scores:\n      bench: [" + score + "]\n"
+}
+
 func TestLoadRejects(t *testing.T) {
 	for _, f := range []string{
 		"bad-tier",
