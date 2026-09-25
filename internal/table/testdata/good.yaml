@@ -11,6 +11,7 @@ models:
     tier: top
     vision: true
     cost: {input: 10, output: 50}
+    context_window: 400000
     scores:
       arena-webdev:
         - {effort: max, value: 1792.2, margin: 12.1, date: 2026-09-23}

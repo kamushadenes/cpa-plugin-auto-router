@@ -22,7 +22,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-const pluginIdentifier = "auto-router"
+const (
+	pluginIdentifier   = "auto-router"
+	maxJevSnippetChars = 1500
+)
 
 type lifecycleRequest struct {
 	ConfigYAML []byte `json:"config_yaml"`
@@ -171,8 +174,11 @@ func configure(raw []byte) error {
 	if cfg.TablePath == "" {
 		cfg.TablePath = "/home/hermes/cliproxyapi/plugins/auto-router/models.yaml"
 	}
-	if cfg.SnippetChars == 0 {
-		cfg.SnippetChars = 1500
+	if cfg.SnippetChars <= 0 {
+		cfg.SnippetChars = maxJevSnippetChars
+	}
+	if cfg.SnippetChars > maxJevSnippetChars {
+		cfg.SnippetChars = maxJevSnippetChars
 	}
 	if cfg.JevTimeoutMS == 0 {
 		cfg.JevTimeoutMS = 2000
@@ -212,7 +218,7 @@ func pluginRegistration() registration {
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata: pluginapi.Metadata{
 			Name:             "auto-router",
-			Version:          "0.1.4",
+			Version:          "0.1.5",
 			Author:           "chloeassistant",
 			GitHubRepository: "https://github.com/chloeassistant/cpa-plugin-auto-router",
 			ConfigFields: []pluginapi.ConfigField{
@@ -264,6 +270,7 @@ type routeMeta struct {
 	confidence           float64
 	jevMillis            int64
 	hasImage             bool
+	estTokens            int
 }
 
 type routeContext struct {
@@ -277,6 +284,7 @@ type routeContext struct {
 	confidence           float64
 	jevMillis            int64
 	hasImage             bool
+	estTokens            int
 }
 
 func routeModel(raw []byte) ([]byte, error) {
@@ -336,6 +344,8 @@ func reconcileRouteDecision(decision decide.Decision, effective decide.State, ro
 		Category:   routeCtx.category,
 		Difficulty: effective.Difficulty,
 		HasImage:   routeCtx.hasImage,
+		EstTokens:  routeCtx.estTokens,
+		Exclude:    excluded,
 	}, effective, true)
 	if err != nil {
 		return decide.Decision{}, err
@@ -382,7 +392,9 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 		return decide.Decision{}, routeMeta{}, routeContext{}, err
 	}
 	text, signals := snippet.Extract(req.SourceFormat, req.Body, cfg.SnippetChars)
-	meta := routeMeta{hasImage: signals.Images > 0}
+	// ponytail: bytes/4 plus image overhead estimates capacity without a tokenizer.
+	estTokens := (len(req.Body)+3)/4 + signals.Images*1000
+	meta := routeMeta{hasImage: signals.Images > 0, estTokens: estTokens}
 	var category, difficulty string
 	jevOK := false
 	if hasPrev && (prev.Difficulty == decide.Extreme || !signals.HasNewUserMessage) {
@@ -425,12 +437,12 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 	if meta.difficulty == "" {
 		meta.difficulty = difficulty
 	}
-	input := decide.Input{Table: tb, Category: category, Difficulty: difficulty, HasImage: signals.Images > 0, Exclude: excluded}
+	input := decide.Input{Table: tb, Category: category, Difficulty: difficulty, HasImage: signals.Images > 0, EstTokens: estTokens, Exclude: excluded}
 	decision, err := decide.Next(input, prev, jevOK)
 	if err != nil {
 		return decide.Decision{}, routeMeta{}, routeContext{}, err
 	}
-	return decision, meta, routeContext{category: category, factors: meta.factors, effortP: meta.effortP, effortMean: meta.effortMean, difficulty: difficulty, categoryConfidence: meta.categoryConfidence, difficultyConfidence: meta.difficultyConfidence, confidence: meta.confidence, jevMillis: meta.jevMillis, hasImage: signals.Images > 0}, nil
+	return decision, meta, routeContext{category: category, factors: meta.factors, effortP: meta.effortP, effortMean: meta.effortMean, difficulty: difficulty, categoryConfidence: meta.categoryConfidence, difficultyConfidence: meta.difficultyConfidence, confidence: meta.confidence, jevMillis: meta.jevMillis, hasImage: signals.Images > 0, estTokens: estTokens}, nil
 }
 
 func routeResponse(callbackID, sid string, decision decide.Decision, meta routeMeta) ([]byte, error) {
@@ -456,6 +468,8 @@ func routeResponse(callbackID, sid string, decision decide.Decision, meta routeM
 		"thinking":              decision.Thinking,
 		"reason":                decision.Reason,
 		"jev_ms":                meta.jevMillis,
+		"est_tokens":            meta.estTokens,
+		"context_filtered":      decision.ContextFiltered,
 	}
 	payload, err := json.Marshal(fields)
 	if err != nil {

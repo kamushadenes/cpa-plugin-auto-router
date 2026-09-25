@@ -49,7 +49,7 @@ class Model:
     vision: bool
     cost: Cost
     scores: dict[str, list[Score]] = field(default_factory=dict)
-
+    context_window: int = 0
 
 @dataclass
 class Table:
@@ -84,6 +84,7 @@ def _plain(value: Any) -> Any:
             "vision": value.vision,
             "cost": _plain(value.cost),
             "scores": _plain(value.scores),
+            "context_window": value.context_window,
         }
     if isinstance(value, Cost):
         return {"input": value.input, "output": value.output}
@@ -137,6 +138,15 @@ def validate(value: Any) -> None:
     for model_id, model in models.items():
         if not isinstance(model, Mapping):
             raise ValidationError(f"model {model_id}: must be a mapping")
+        context_window = model.get("context_window", 0)
+        if (
+            isinstance(context_window, bool)
+            or not isinstance(context_window, int)
+            or context_window < 0
+        ):
+            raise ValidationError(
+                f"model {model_id}: context_window must be a nonnegative integer"
+            )
         tier = model.get("tier")
         if tier not in VALID_TIERS:
             raise ValidationError(f"model {model_id}: invalid tier {tier!r}")
@@ -218,6 +228,7 @@ def _model(model_id: str, value: Mapping[str, Any]) -> Model:
             str(benchmark_id): [_score(entry) for entry in entries]
             for benchmark_id, entries in (value.get("scores") or {}).items()
         },
+        context_window=int(value.get("context_window", 0)),
     )
 
 
@@ -245,7 +256,9 @@ def load(path: str | os.PathLike[str]) -> Table:
     return _table(raw)
 
 
-def _capability(caps: Mapping[str, Any], model_id: str) -> tuple[bool, Cost] | None:
+def _capability(
+    caps: Mapping[str, Any], model_id: str
+) -> tuple[bool, Cost, int | None] | None:
     value = caps.get(model_id)
     if not isinstance(value, Mapping):
         return None
@@ -262,7 +275,14 @@ def _capability(caps: Mapping[str, Any], model_id: str) -> tuple[bool, Cost] | N
         or not isinstance(output_cost, (int, float))
     ):
         return None
-    return vision, Cost(float(input_cost), float(output_cost))
+    context_window = value.get("context_window")
+    if (
+        isinstance(context_window, bool)
+        or not isinstance(context_window, int)
+        or context_window <= 0
+    ):
+        context_window = None
+    return vision, Cost(float(input_cost), float(output_cost)), context_window
 
 
 def _declared_benchmarks(old: Table | None) -> dict[str, Any]:
@@ -280,6 +300,7 @@ def _clone_model(model: Model) -> Model:
         vision=model.vision,
         cost=Cost(model.cost.input, model.cost.output),
         scores={benchmark: list(scores) for benchmark, scores in model.scores.items()},
+        context_window=model.context_window,
     )
 
 
@@ -310,7 +331,9 @@ def merge(
                 model.tier = tiers[model_id]
                 capability = _capability(caps, model_id)
                 if capability is not None:
-                    model.vision, model.cost = capability
+                    model.vision, model.cost, context_window = capability
+                    if context_window is not None:
+                        model.context_window = context_window
                 models[model_id] = model
 
     for model_id in sorted(eligible):
@@ -323,9 +346,13 @@ def merge(
                 model_id,
             )
             continue
-        vision, cost = capability
+        vision, cost, context_window = capability
         models[model_id] = Model(
-            tier=tiers[model_id], vision=vision, cost=cost, scores={}
+            tier=tiers[model_id],
+            vision=vision,
+            cost=cost,
+            scores={},
+            context_window=context_window or 0,
         )
 
     benchmark_info = _declared_benchmarks(old)

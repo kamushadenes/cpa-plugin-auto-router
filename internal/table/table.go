@@ -56,10 +56,11 @@ func (s *Score) UnmarshalYAML(node *yaml.Node) error {
 }
 
 type Model struct {
-	Tier   string                          `yaml:"tier"`
-	Vision bool                            `yaml:"vision"`
-	Cost   struct{ Input, Output float64 } `yaml:"cost"`
-	Scores map[string][]Score              `yaml:"scores"`
+	Tier          string                          `yaml:"tier"`
+	Vision        bool                            `yaml:"vision"`
+	ContextWindow int                             `yaml:"context_window"`
+	Cost          struct{ Input, Output float64 } `yaml:"cost"`
+	Scores        map[string][]Score              `yaml:"scores"`
 }
 
 type Table struct {
@@ -98,6 +99,9 @@ func Load(path string) (*Table, error) {
 	for id, model := range t.Models {
 		if !validTiers[model.Tier] {
 			return nil, fmt.Errorf("%s: model %s: invalid tier %q", path, id, model.Tier)
+		}
+		if model.ContextWindow < 0 {
+			return nil, fmt.Errorf("%s: model %s: negative context window %d", path, id, model.ContextWindow)
 		}
 		for benchmark, scores := range model.Scores {
 			if _, ok := t.Benchmarks[benchmark]; !ok {

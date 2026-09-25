@@ -707,3 +707,103 @@ func TestRetryableHostFailureAllowlist(t *testing.T) {
 		})
 	}
 }
+
+func configureContextHostTest(t *testing.T) {
+	t.Helper()
+	t.Setenv("TEST_JEV_KEY", "")
+	path := t.TempDir() + "/models.yaml"
+	raw := []byte("benchmarks:\n  arena-overall: {source: test, unit: elo}\nmodels:\n  small:\n    tier: mid\n    vision: true\n    cost: {input: 1, output: 1}\n    context_window: 200000\n    scores: {}\n  medium:\n    tier: mid\n    vision: true\n    cost: {input: 2, output: 2}\n    context_window: 1000000\n    scores: {}\n  large:\n    tier: mid\n    vision: true\n    cost: {input: 3, output: 3}\n    context_window: 2000000\n    scores: {}\n")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	config, err := json.Marshal(lifecycleRequest{ConfigYAML: []byte("enabled: true\njev_api_key_env: TEST_JEV_KEY\njev_base_url: http://127.0.0.1:1\njev_timeout_ms: 20\ntable_path: " + path + "\n")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := configure(config); err != nil {
+		t.Fatal(err)
+	}
+	store = session.New(time.Hour, 65536)
+	pending = sync.Map{}
+}
+
+func TestFailoverKeepsContextEstimate(t *testing.T) {
+	configureContextHostTest(t)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.executeResponses["medium"] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusTooManyRequests, Body: []byte(`{"error":"rate limit"}`)}
+	fake.executeResponses["large"] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusOK, Body: []byte(`{"ok":true}`)}
+
+	body := largeChatBody(t, 1_000_000)
+	request := pluginapi.ModelRouteRequest{
+		RequestedModel: pluginIdentifier,
+		SourceFormat:   "chat-completions",
+		Headers:        http.Header{"X-Session-ID": []string{"context-failover-session"}},
+		Body:           body,
+	}
+	if _, err := routeModel(marshalRoute(t, request)); err != nil {
+		t.Fatal(err)
+	}
+	executor := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		Model:           pluginIdentifier,
+		SourceFormat:    request.SourceFormat,
+		OriginalRequest: body,
+		Headers:         request.Headers,
+	}}
+	raw, err := json.Marshal(executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := execute(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, response := decodeHostEnvelope(t, result)
+	if !env.OK || string(response.Payload) != `{"ok":true}` {
+		t.Fatalf("execute response = %#v, envelope = %#v", response, env)
+	}
+	assertFailoverHeader(t, response.Headers.Get("X-Auto-Router"), "large", []string{"medium"})
+
+	wantEstimate := float64((len(body) + 3) / 4)
+	for _, entry := range fake.logs {
+		fields := decisionLogFields(t, entry)
+		if fields["reason"] != "failover" {
+			continue
+		}
+		if fields["model"] != "large" || fields["est_tokens"] != wantEstimate || fields["context_filtered"] != true {
+			t.Fatalf("failover log = %#v", fields)
+		}
+		return
+	}
+	t.Fatalf("no failover log: %#v", fake.logs)
+}
+
+func TestReclassifiedExecutionKeepsContextOverflowReason(t *testing.T) {
+	configureTest(t)
+	store = session.New(time.Hour, 65536)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.executeResponses["blind"] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusOK, Body: []byte(`{"ok":true}`)}
+
+	executor := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		Model:           pluginIdentifier,
+		SourceFormat:    "chat-completions",
+		OriginalRequest: largeChatBody(t, 1_600_000),
+		Headers:         http.Header{"X-Session-ID": []string{"overflow-executor-session"}},
+	}}
+	raw, err := json.Marshal(executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := execute(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	env, response := decodeHostEnvelope(t, result)
+	if !env.OK {
+		t.Fatalf("execute envelope = %#v", env)
+	}
+	if got := response.Headers.Get("X-Auto-Router"); got != "blind(high);context_overflow_risk" {
+		t.Fatalf("X-Auto-Router = %q, want the overflow reason to survive reclassification", got)
+	}
+}

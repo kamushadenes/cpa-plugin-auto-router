@@ -312,8 +312,10 @@ func decisionForExecutorWithContext(req rpcExecutorRequest) (decide.Decision, ro
 			return decide.Decision{}, routeContext{}, 0, err
 		}
 	}
-	decision.Reason = "reclassified"
-	decision.Choice.Reason = "reclassified"
+	if decision.Reason != "context_overflow_risk" {
+		decision.Reason = "reclassified"
+		decision.Choice.Reason = "reclassified"
+	}
 	if _, err := routeResponse(req.HostCallbackID, sid, decision, meta); err != nil {
 		return decide.Decision{}, routeContext{}, 0, err
 	}
@@ -445,6 +447,7 @@ func nextFailoverDecision(current decide.Decision, routeCtx routeContext, failed
 		Category:   routeCtx.category,
 		Difficulty: difficulty,
 		HasImage:   routeCtx.hasImage,
+		EstTokens:  routeCtx.estTokens,
 		Available: func(model string) bool {
 			return !failed[model]
 		},
@@ -458,8 +461,10 @@ func nextFailoverDecision(current decide.Decision, routeCtx routeContext, failed
 	if next.Model == current.Model || failed[next.Model] {
 		return decide.Decision{}, errors.New("no unfailed model available")
 	}
-	next.Reason = "failover"
-	next.Choice.Reason = "failover"
+	if next.Reason != "context_overflow_risk" {
+		next.Reason = "failover"
+		next.Choice.Reason = "failover"
+	}
 	return next, nil
 }
 
@@ -479,6 +484,10 @@ func logFailover(req rpcExecutorRequest, decision decide.Decision, routeCtx rout
 	if len(routeCtx.effortP) > 0 {
 		difficulty = decide.Difficulty(routeCtx.effortP)
 	}
+	reason := "failover"
+	if decision.Reason == "context_overflow_risk" {
+		reason = decision.Reason
+	}
 	fields := map[string]any{
 		"session":               hashSession(session.ID(req.Headers, req.OriginalRequest)),
 		"category":              category,
@@ -492,8 +501,10 @@ func logFailover(req rpcExecutorRequest, decision decide.Decision, routeCtx rout
 		"tier":                  decision.Tier,
 		"model":                 decision.Model,
 		"thinking":              decision.Thinking,
-		"reason":                "failover",
+		"reason":                reason,
 		"jev_ms":                routeCtx.jevMillis,
+		"est_tokens":            routeCtx.estTokens,
+		"context_filtered":      decision.ContextFiltered,
 		"failed_from":           append([]string(nil), failed...),
 	}
 	payload, _ := json.Marshal(fields)

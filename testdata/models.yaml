@@ -5,14 +5,17 @@ models:
     tier: mid
     vision: true
     cost: {input: 0.2, output: 1.2}
+    context_window: 128000
     scores: {}
   blind:
     tier: top
     vision: false
     cost: {input: 1, output: 1}
+    context_window: 400000
     scores: {}
   eyes:
     tier: top
     vision: true
     cost: {input: 2, output: 2}
+    context_window: 200000
     scores: {}

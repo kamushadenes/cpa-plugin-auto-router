@@ -34,6 +34,121 @@ def test_load_exposes_typed_models_and_scores():
     assert score.value == 57.88
     assert score.margin == 2.7
     assert table.models["gpt-6-astra"].tier == "top"
+    assert table.models["gpt-6-astra"].context_window == 0
+
+
+def _write_context_table(path: Path, context_window: int) -> None:
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "benchmarks": {"x": {"source": "test", "unit": "pct"}},
+                "models": {
+                    "m": {
+                        "tier": "top",
+                        "vision": False,
+                        "context_window": context_window,
+                        "cost": {"input": 1, "output": 1},
+                        "scores": {},
+                    }
+                },
+            }
+        )
+    )
+
+
+def test_merge_keeps_known_context_when_fresh_capability_omits_it(tmp_path):
+    source = tmp_path / "old.yaml"
+    _write_context_table(source, 123456)
+    old = merge.load(source)
+
+    new = merge.merge(
+        old,
+        rows=[],
+        catalog_ids={"m"},
+        tiers={"m": "top"},
+        caps={"m": {"vision": True, "cost": {"input": 2, "output": 3}}},
+    )
+
+    assert new.models["m"].context_window == 123456
+
+
+def test_fresh_model_without_context_metadata_is_fail_open():
+    new = merge.merge(
+        old=None,
+        rows=[],
+        catalog_ids={"m"},
+        tiers={"m": "top"},
+        caps={"m": {"vision": True, "cost": {"input": 2, "output": 3}}},
+    )
+
+    assert new.models["m"].context_window == 0
+
+
+def test_merge_updates_context_from_valid_fresh_capability(tmp_path):
+    source = tmp_path / "old.yaml"
+    _write_context_table(source, 123456)
+    old = merge.load(source)
+
+    new = merge.merge(
+        old,
+        rows=[],
+        catalog_ids={"m"},
+        tiers={"m": "top"},
+        caps={
+            "m": {
+                "vision": True,
+                "cost": {"input": 2, "output": 3},
+                "context_window": 654321,
+            }
+        },
+    )
+
+    assert new.models["m"].context_window == 654321
+
+
+def test_context_window_survives_load_clone_and_write_round_trip(tmp_path):
+    source = tmp_path / "old.yaml"
+    out = tmp_path / "new.yaml"
+    _write_context_table(source, 654321)
+    loaded = merge.load(source)
+
+    cloned = merge.merge(
+        loaded,
+        rows=[],
+        catalog_ids={"m"},
+        tiers={"m": "top"},
+        caps={},
+    )
+    merge.write_atomic(out, cloned)
+    round_tripped = merge.load(out)
+
+    assert loaded.models["m"].context_window == 654321
+    assert cloned.models["m"].context_window == 654321
+    assert round_tripped.models["m"].context_window == 654321
+@pytest.mark.parametrize("context_window", [None, 0, -1, 1.5, "654321", True])
+def test_merge_ignores_unknown_or_invalid_context_updates(tmp_path, context_window):
+    source = tmp_path / "old.yaml"
+    _write_context_table(source, 123456)
+    old = merge.load(source)
+    caps = {
+        "m": {
+            "vision": True,
+            "cost": {"input": 2, "output": 3},
+            "context_window": context_window,
+        }
+    }
+
+    new = merge.merge(
+        old,
+        rows=[],
+        catalog_ids={"m"},
+        tiers={"m": "top"},
+        caps=caps,
+    )
+
+    assert new.models["m"].context_window == 123456
+
+
 
 
 def test_merge_date_rule_keeps_older_and_accepts_equal_or_newer():
