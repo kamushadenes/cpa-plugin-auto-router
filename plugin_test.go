@@ -112,6 +112,95 @@ func lowConfidenceJevResponse(touchesCode, frontend float64) string {
 	return `{"answers":{"touches_code":{"noul":` + formatFloat(touchesCode) + `},"frontend":{"noul":` + formatFloat(frontend) + `},"fix_existing":{"noul":0.1},"judges_existing":{"noul":0.1},"design_only":{"noul":0.1},"many_steps":{"noul":0.1},"transform_only":{"noul":0.1},"exact_answer":{"noul":0.1},"writes_tests":{"noul":0.1},"effort":{"probabilities":{"0":0.4,"1":0.3,"2":0.2,"3":0.05,"4":0.05}}}}`
 }
 
+func jevResponseWithEffort(effort string) string {
+	return strings.Replace(
+		calibratedJevResponse(0.9, 0.1),
+		`{"0":0,"1":1,"2":0,"3":0,"4":0}`,
+		effort,
+		1,
+	)
+}
+
+func TestDecideWithContextEscalatesJournalExtreme(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(jevResponseWithEffort(`{"0":0,"1":0,"2":0,"3":0.61,"4":0.39}`)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	request := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Body: []byte(`{"messages":[{"role":"user","content":"design the RLS migration"}]}`)}
+	previous := decide.State{Difficulty: decide.Trivial, Model: "gpt-5.6-luna", Tier: "flash", Thinking: "low"}
+	decision, meta, _, err := decideForWithContext(request, previous, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.effortMean != 3.39 || meta.difficultyConfidence != 1 {
+		t.Fatalf("journal metadata = %#v", meta)
+	}
+	if decision.State.Difficulty != decide.Extreme || decision.State.Tier != "top" || decision.State.Thinking != "max" || decision.Reason != "escalate-tier" {
+		t.Fatalf("journal decision = %#v", decision)
+	}
+}
+
+func TestDecideWithContextUsesHardFloorForLowConfidenceExtreme(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(jevResponseWithEffort(`{"0":0.45,"1":0,"2":0,"3":0.15,"4":0.40}`)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	request := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Body: []byte(`{"messages":[{"role":"user","content":"investigate this failure"}]}`)}
+	previous := decide.State{Difficulty: decide.Trivial, Model: "gpt-5.6-luna", Tier: "flash", Thinking: "low"}
+	decision, meta, _, err := decideForWithContext(request, previous, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.effortMean != 2.05 || meta.difficultyConfidence != .55 {
+		t.Fatalf("low-confidence extreme metadata = %#v", meta)
+	}
+	if decision.State.Difficulty != decide.Hard || decision.State.Tier != "top" || decision.State.Thinking != "xhigh" || decision.Reason != "escalate-tier" {
+		t.Fatalf("low-confidence extreme decision = %#v", decision)
+	}
+	if decision.State.Difficulty == decide.Trivial {
+		t.Fatal("low-confidence extreme must not retain trivial difficulty")
+	}
+}
+
+func TestDecideWithContextFloorsLowConfidenceHardToRoutine(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(jevResponseWithEffort(`{"0":0.41,"1":0,"2":0,"3":0.29,"4":0.30}`)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	request := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Body: []byte(`{"messages":[{"role":"user","content":"fix this issue"}]}`)}
+	previous := decide.State{Difficulty: decide.Trivial, Model: "gpt-5.6-luna", Tier: "flash", Thinking: "low"}
+	decision, meta, _, err := decideForWithContext(request, previous, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.effortMean != 2.07 || meta.difficultyConfidence != .29 {
+		t.Fatalf("low-confidence hard metadata = %#v", meta)
+	}
+	if decision.State.Difficulty != decide.Routine || decision.State.Tier != "mid" || decision.State.Thinking != "high" || decision.Reason != "escalate-tier" {
+		t.Fatalf("low-confidence hard decision = %#v", decision)
+	}
+}
+
+func TestDecideWithContextPreservesHigherPreviousDifficulty(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(jevResponseWithEffort(`{"0":0.45,"1":0.55,"2":0,"3":0,"4":0}`)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	request := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Body: []byte(`{"messages":[{"role":"user","content":"fix this issue again"}]}`)}
+	previous := decide.State{Difficulty: decide.Hard, Model: "blind", Tier: "top", Thinking: "xhigh"}
+	decision, _, _, err := decideForWithContext(request, previous, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.State.Difficulty != decide.Hard || decision.State.Tier != "top" || decision.State.Thinking != "xhigh" {
+		t.Fatalf("higher previous difficulty was downgraded = %#v", decision)
+	}
+}
+
 func TestRouteIgnoresOtherModels(t *testing.T) {
 	raw, err := json.Marshal(rpcModelRouteRequest{ModelRouteRequest: pluginapi.ModelRouteRequest{RequestedModel: "gpt-6-astra"}})
 	if err != nil {
@@ -274,7 +363,7 @@ func TestRouteKeepsConfidenceFallbacksForNewAndExistingSessions(t *testing.T) {
 	if meta.category != "" || meta.categoryConfidence != 0.5 {
 		t.Fatalf("new low-confidence category = %#v", meta)
 	}
-	if decision.State.Difficulty != decide.Routine {
+	if decision.State.Difficulty != decide.Trivial {
 		t.Fatalf("new low-confidence difficulty = %#v", decision.State)
 	}
 	prev := decide.State{Difficulty: decide.Hard, Model: "prior", Tier: "top", Thinking: "xhigh"}

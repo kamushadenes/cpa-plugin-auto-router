@@ -141,19 +141,44 @@ func TestCategoryConfidenceSupportingEvidence(t *testing.T) {
 	}
 }
 
-func TestDifficultyBoundariesAndConfidenceMass(t *testing.T) {
+func TestDifficultyBoundaries(t *testing.T) {
+	tests := []struct {
+		name string
+		p    EffortDistribution
+		want string
+	}{
+		{"trivial below .5, no bump", EffortDistribution{"0": .7505, "2": .2495}, "trivial"},
+		{"routine at .5", EffortDistribution{"0": .5, "1": .5}, "routine"},
+		{"routine below 2", EffortDistribution{"0": .01, "1": .49, "2": .5}, "routine"},
+		{"hard at 2", EffortDistribution{"0": 0, "2": 1}, "hard"},
+		{"hard below 3.1", EffortDistribution{"3": .999, "4": .001}, "hard"},
+		{"extreme at 3.1", EffortDistribution{"3": .9, "4": .1}, "extreme"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := Difficulty(test.p); got != test.want {
+				t.Fatalf("Difficulty() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
+func TestDifficultyConfidenceUsesFinalLabelMass(t *testing.T) {
 	tests := []struct {
 		name string
 		p    EffortDistribution
 		want string
 		conf float64
 	}{
-		{"trivial below .5, no bump", EffortDistribution{"0": .7505, "2": .2495}, "trivial", .7505},
-		{"routine at .5", EffortDistribution{"0": .5, "1": .5}, "routine", .5},
-		{"routine below 2", EffortDistribution{"0": .01, "1": .49, "2": .5}, "routine", .99},
-		{"hard at 2", EffortDistribution{"0": 0, "2": 1}, "hard", 1},
-		{"hard below 3.1", EffortDistribution{"3": .999, "4": .001}, "hard", .999},
-		{"extreme at 3.1", EffortDistribution{"3": .9, "4": .1}, "extreme", .1},
+		// Trivial cannot be reached by a bump; these are both mean paths.
+		{"trivial mean, low first-level mass", EffortDistribution{"0": .8, "1": .1, "2": .1}, Trivial, .8},
+		{"trivial mean, higher first-level mass", EffortDistribution{"0": .7, "1": .2, "2": .1}, Trivial, .7},
+		{"routine bump from trivial", EffortDistribution{"0": .6, "1": .4}, Routine, .4},
+		{"routine mean", EffortDistribution{"1": .7, "2": .2, "3": .1}, Routine, .9},
+		{"routine bump to hard", EffortDistribution{"1": .6, "3": .4}, Hard, .4},
+		{"hard mean", EffortDistribution{"2": .6, "3": .3, "4": .1}, Hard, .9},
+		{"hard bump to extreme", EffortDistribution{"2": .3, "3": .35, "4": .35}, Extreme, .7},
+		{"extreme mean", EffortDistribution{"3": .9, "4": .1}, Extreme, 1},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -164,6 +189,16 @@ func TestDifficultyBoundariesAndConfidenceMass(t *testing.T) {
 				t.Fatalf("DifficultyConfidence() = %v, want %v", got, test.conf)
 			}
 		})
+	}
+}
+
+func TestDifficultyRLSJournalRegression(t *testing.T) {
+	p := EffortDistribution{"0": 0, "1": 0, "2": 0, "3": .61, "4": .39}
+	if got := Difficulty(p); got != Extreme {
+		t.Fatalf("Difficulty() = %q, want %q", got, Extreme)
+	}
+	if got := DifficultyConfidence(p); math.Abs(got-1) > 1e-9 {
+		t.Fatalf("DifficultyConfidence() = %v, want 1", got)
 	}
 }
 

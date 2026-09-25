@@ -116,19 +116,21 @@ A confiança de categoria usa o mínimo dos fatores que sustentam a regra
 vencedora; condições negativas usam `1-p`. Comparações entre fatores definem
 prioridade. Para `writing`, a confiança é `1-max(fatores)`. A confiança de
 dificuldade usa `p0` para `trivial`, `p1+p2` para `routine`, `p2+p3` para
-`hard` e `p4` para `extreme`. Se `extreme` veio da escalada, soma também
-`p3`. O caso RLS com `{1:0,03, 2:0,49, 3:0,48}` permanece `hard`, com
+`hard` e `p3+p4` para `extreme`, independentemente de o rótulo vir da média
+ou da escalada. O caso RLS com `{1:0,03, 2:0,49, 3:0,48}` permanece `hard`, com
 confiança `0,97`. Os testes preservam os 39 casos de categoria e 21 de
 dificuldade originais, acrescentam esse caso do journal e cobrem as três
 escaladas, sem chamadas de rede.
 
 Abaixo de `confidence_threshold` (padrão 0,6), categoria usa ranking geral;
-dificuldade usa `routine` em sessão nova ou mantém a dificuldade da sessão.
+dificuldade usa o maior valor entre a dificuldade anterior e uma faixa abaixo
+do rótulo do Jev, com mínimo `trivial` em sessão nova.
 O log preserva os rótulos compostos antes desse filtro; `tier` e `thinking`
 mostram a decisão de execução.
 
-Jev indisponível, timeout ou resposta inválida → mesmo default, `reason:
-jev-unavailable`, **o pedido segue**. O roteador é fail-open; nunca bloqueia.
+Jev indisponível, timeout ou resposta inválida → `routine` em sessão nova ou
+dificuldade anterior em sessão existente, `reason: jev-unavailable`;
+**o pedido segue**. O roteador é fail-open; nunca bloqueia.
 
 Jev não é fronteira de segurança: texto injetado no prompt pode mover a
 decisão. O pior caso é rotear para um modelo mais caro; nada destrutivo

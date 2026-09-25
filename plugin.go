@@ -212,7 +212,7 @@ func pluginRegistration() registration {
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata: pluginapi.Metadata{
 			Name:             "auto-router",
-			Version:          "0.1.0",
+			Version:          "0.1.4",
 			Author:           "chloeassistant",
 			GitHubRepository: "https://github.com/chloeassistant/cpa-plugin-auto-router",
 			ConfigFields: []pluginapi.ConfigField{
@@ -343,6 +343,28 @@ func reconcileRouteDecision(decision decide.Decision, effective decide.State, ro
 	return reconciled, nil
 }
 
+func oneStepBelowDifficulty(difficulty string) string {
+	switch difficulty {
+	case decide.Routine:
+		return decide.Trivial
+	case decide.Hard:
+		return decide.Routine
+	case decide.Extreme:
+		return decide.Hard
+	default:
+		return decide.Trivial
+	}
+}
+
+func lowConfidenceDifficulty(jevLabel, previous string) string {
+	// ponytail: below-gate means uncertainty between adjacent bands; take the lower band and keep the session floor.
+	fallback := oneStepBelowDifficulty(jevLabel)
+	if decide.Rank(previous) > decide.Rank(fallback) {
+		return previous
+	}
+	return fallback
+}
+
 func decideFor(req pluginapi.ModelRouteRequest, prev decide.State, hasPrev bool) (decide.Decision, error) {
 	decision, _, _, err := decideForWithContext(req, prev, hasPrev)
 	return decision, err
@@ -394,8 +416,10 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 			}
 			if meta.difficultyConfidence >= cfg.ConfidenceThreshold {
 				difficulty = decide.Difficulty(jevResult.Effort)
-				meta.difficulty = difficulty
+			} else {
+				difficulty = lowConfidenceDifficulty(decide.Difficulty(jevResult.Effort), prev.Difficulty)
 			}
+			meta.difficulty = difficulty
 		}
 	}
 	if meta.difficulty == "" {
