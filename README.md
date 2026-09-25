@@ -44,6 +44,12 @@ The plugin accepts these fields under `plugins.configs.auto-router`:
 - `snippet_chars`: maximum user-message snippet sent to Jev. Default: `1500`.
 - `jev_timeout_ms`: Jev request timeout. Default: `2000`.
 
+## Model failover
+
+The executor tries at most three ranked models when the host returns an allow-listed retryable error. Each retry excludes the models that already failed. Streaming can retry only before the first emitted chunk; the executor holds at most one chunk while selecting the effective response headers.
+
+A successful retry stores the effective session model. The decision log and `X-Auto-Router` identify that model with `reason: failover` and the ordered `failed_from` list. This host version exposes callback errors as text, so the plugin matches explicit rate-limit, overload, cooldown, unavailable-auth, API-error, selected status, and premature-stream-close markers. Invalid requests and authentication errors return immediately. No host patch is required; numeric status propagation is tracked in issue #3.
+
 ## Benchmark table and tiers
 
 `table/tiers.yaml` is operator-owned. It declares the `flash`, `mid`, and `top` sets; the updater never changes it. The TEST catalog had 50 models, of which all 20 tier entries were present in the generated table:

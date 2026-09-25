@@ -32,7 +32,10 @@ func newPluginStreamLifecycle() *pluginStreamLifecycle {
 	return &pluginStreamLifecycle{done: make(chan struct{})}
 }
 
-var streamLifecycle = newPluginStreamLifecycle()
+var (
+	streamLifecycle = newPluginStreamLifecycle()
+	hostCall        = callHost
+)
 
 func beginPluginStream() bool {
 	streamLifecycle.mu.Lock()
@@ -76,40 +79,72 @@ func execute(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
-	decision, err := decisionForExecutor(req)
+	decision, routeCtx, err := decisionForExecutorWithContext(req)
 	if err != nil {
 		return errorEnvelope("executor_error", err.Error()), nil
 	}
-	model := routedModel(decision)
-	responseRaw, err := callHost(pluginabi.MethodHostModelExecute, hostModelExecutionRequest{
-		HostModelExecutionRequest: pluginapi.HostModelExecutionRequest{
-			EntryProtocol: req.SourceFormat,
-			ExitProtocol:  req.SourceFormat,
-			Model:         model,
-			Stream:        false,
-			Body:          req.OriginalRequest,
-			Headers:       req.Headers,
-			Query:         req.Query,
-			Alt:           req.Alt,
-		},
-		HostCallbackID: req.HostCallbackID,
-	})
-	if err != nil {
-		return errorEnvelope("executor_error", err.Error()), nil
+	failed := make([]string, 0, maxHostAttempts-1)
+	failedSet := make(map[string]bool, maxHostAttempts-1)
+	var lastErr error
+	for attempt := range maxHostAttempts {
+		model := routedModel(decision)
+		responseRaw, callErr := hostCall(pluginabi.MethodHostModelExecute, hostModelExecutionRequest{
+			HostModelExecutionRequest: pluginapi.HostModelExecutionRequest{
+				EntryProtocol: req.SourceFormat,
+				ExitProtocol:  req.SourceFormat,
+				Model:         model,
+				Stream:        false,
+				Body:          req.OriginalRequest,
+				Headers:       req.Headers,
+				Query:         req.Query,
+				Alt:           req.Alt,
+			},
+			HostCallbackID: req.HostCallbackID,
+		})
+		if callErr != nil {
+			lastErr = callErr
+			if !retryableHostFailure(0, callErr) || attempt+1 == maxHostAttempts {
+				return errorEnvelope("executor_error", callErr.Error()), nil
+			}
+		} else {
+			var hostResponse pluginapi.HostModelExecutionResponse
+			if err := json.Unmarshal(responseRaw, &hostResponse); err != nil {
+				return errorEnvelope("executor_error", "invalid host model response"), nil
+			}
+			if hostResponse.StatusCode < http.StatusBadRequest {
+				persistEffectiveSession(req, decision)
+				headers := cloneHeaders(hostResponse.Headers)
+				if headers == nil {
+					headers = make(http.Header)
+				}
+				if headers.Get("Content-Type") == "" {
+					headers.Set("Content-Type", contentTypeFor(req.SourceFormat, false))
+				}
+				headers.Set("X-Auto-Router", effectiveRouterHeader(model, decision, failed))
+				if len(failed) > 0 {
+					logFailover(req, decision, routeCtx, failed)
+				}
+				return okEnvelope(pluginapi.ExecutorResponse{Payload: hostResponse.Body, Headers: headers})
+			}
+			lastErr = fmt.Errorf("host model status %d: %s", hostResponse.StatusCode, string(hostResponse.Body))
+			if !retryableHostFailure(hostResponse.StatusCode, lastErr) || attempt+1 == maxHostAttempts {
+				return errorEnvelope("executor_error", lastErr.Error()), nil
+			}
+		}
+
+		failed = append(failed, decision.Model)
+		failedSet[decision.Model] = true
+		next, nextErr := nextFailoverDecision(decision, routeCtx, failedSet)
+		if nextErr != nil {
+			lastErr = nextErr
+			break
+		}
+		decision = next
 	}
-	var hostResponse pluginapi.HostModelExecutionResponse
-	if err := json.Unmarshal(responseRaw, &hostResponse); err != nil {
-		return errorEnvelope("executor_error", "invalid host model response"), nil
+	if lastErr == nil {
+		lastErr = errors.New("host model execution failed")
 	}
-	headers := cloneHeaders(hostResponse.Headers)
-	if headers == nil {
-		headers = make(http.Header)
-	}
-	if headers.Get("Content-Type") == "" {
-		headers.Set("Content-Type", contentTypeFor(req.SourceFormat, false))
-	}
-	headers.Set("X-Auto-Router", model+";"+decision.Reason)
-	return okEnvelope(pluginapi.ExecutorResponse{Payload: hostResponse.Body, Headers: headers})
+	return errorEnvelope("executor_error", lastErr.Error()), nil
 }
 
 func executeStream(raw []byte) ([]byte, error) {
@@ -117,40 +152,78 @@ func executeStream(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
-	streamID := strings.TrimSpace(req.StreamID)
-	if streamID == "" {
+	pluginStreamID := strings.TrimSpace(req.StreamID)
+	if pluginStreamID == "" {
 		return errorEnvelope("executor_error", "stream_id is required for executor.execute_stream"), nil
 	}
 	if !beginPluginStream() {
 		return errorEnvelope("executor_error", "plugin is shutting down"), nil
 	}
-	decision, err := decisionForExecutor(req)
+	decision, routeCtx, err := decisionForExecutorWithContext(req)
 	if err != nil {
 		endPluginStream()
 		return errorEnvelope("executor_error", err.Error()), nil
 	}
+	failed := make([]string, 0, maxHostAttempts-1)
+	failedSet := make(map[string]bool, maxHostAttempts-1)
+	var ready hostStreamReady
+	var lastErr error
+	for attempt := range maxHostAttempts {
+		ready, lastErr = openHostStream(context.Background(), req, routedModel(decision))
+		if lastErr == nil {
+			break
+		}
+		if !retryableHostFailure(0, lastErr) || attempt+1 == maxHostAttempts {
+			closePluginStream(pluginStreamID, lastErr.Error())
+			endPluginStream()
+			return errorEnvelope("executor_error", lastErr.Error()), nil
+		}
+		failed = append(failed, decision.Model)
+		failedSet[decision.Model] = true
+		next, nextErr := nextFailoverDecision(decision, routeCtx, failedSet)
+		if nextErr != nil {
+			closePluginStream(pluginStreamID, nextErr.Error())
+			endPluginStream()
+			return errorEnvelope("executor_error", nextErr.Error()), nil
+		}
+		decision = next
+	}
+	if lastErr != nil {
+		closePluginStream(pluginStreamID, lastErr.Error())
+		endPluginStream()
+		return errorEnvelope("executor_error", lastErr.Error()), nil
+	}
+	persistEffectiveSession(req, decision)
 	model := routedModel(decision)
-	go func() {
+	if len(failed) > 0 {
+		logFailover(req, decision, routeCtx, failed)
+	}
+	go func(ready hostStreamReady) {
 		defer endPluginStream()
-		if err := forwardStream(context.Background(), req, streamID, model, decision); err != nil {
-			closePluginStream(streamID, err.Error())
+		if err := continueHostStream(context.Background(), ready, pluginStreamID); err != nil {
+			closePluginStream(pluginStreamID, err.Error())
 			return
 		}
-		closePluginStream(streamID, "")
-	}()
+		closePluginStream(pluginStreamID, "")
+	}(ready)
 	headers := http.Header{
 		"Content-Type":  []string{contentTypeFor(req.SourceFormat, true)},
-		"X-Auto-Router": []string{model + ";" + decision.Reason},
+		"X-Auto-Router": []string{effectiveRouterHeader(model, decision, failed)},
 	}
 	return okEnvelope(map[string]any{"headers": headers})
 }
 
 func decisionForExecutor(req rpcExecutorRequest) (decide.Decision, error) {
+	decision, _, err := decisionForExecutorWithContext(req)
+	return decision, err
+}
+
+func decisionForExecutorWithContext(req rpcExecutorRequest) (decide.Decision, routeContext, error) {
 	key := requestKey(req.Headers, req.OriginalRequest, req.Metadata)
 	if key != "" {
 		if value, ok := pending.LoadAndDelete(key); ok {
-			if decision, ok := value.(decide.Decision); ok {
-				return decision, nil
+			if route, ok := value.(pendingRoute); ok {
+				return route.decision, route.context, nil
 			}
 		}
 	}
@@ -163,14 +236,20 @@ func decisionForExecutor(req rpcExecutorRequest) (decide.Decision, error) {
 		Body:           req.OriginalRequest,
 		Metadata:       req.Metadata,
 	}
-	decision, err := decideFor(request, prev, hasPrev)
+	decision, _, routeCtx, err := decideForWithContext(request, prev, hasPrev)
 	if err != nil {
-		return decide.Decision{}, err
+		return decide.Decision{}, routeContext{}, err
 	}
 	if sid != "" {
 		store.Put(sid, decision.State)
 	}
-	return decision, nil
+	return decision, routeCtx, nil
+}
+
+func persistEffectiveSession(req rpcExecutorRequest, decision decide.Decision) {
+	if sid := session.ID(req.Headers, req.OriginalRequest); sid != "" {
+		store.Put(sid, decision.State)
+	}
 }
 
 func routedModel(decision decide.Decision) string {
@@ -181,8 +260,17 @@ func routedModel(decision decide.Decision) string {
 	return model
 }
 
-func forwardStream(ctx context.Context, req rpcExecutorRequest, pluginStreamID, model string, decision decide.Decision) error {
-	responseRaw, err := callHost(pluginabi.MethodHostModelExecuteStream, hostModelExecutionRequest{
+// ponytail: three host attempts, no retry framework until a real policy needs one.
+const maxHostAttempts = 3
+
+type hostStreamReady struct {
+	streamID     string
+	firstPayload []byte
+	done         bool
+}
+
+func openHostStream(ctx context.Context, req rpcExecutorRequest, model string) (hostStreamReady, error) {
+	responseRaw, err := hostCall(pluginabi.MethodHostModelExecuteStream, hostModelExecutionRequest{
 		HostModelExecutionRequest: pluginapi.HostModelExecutionRequest{
 			EntryProtocol: req.SourceFormat,
 			ExitProtocol:  req.SourceFormat,
@@ -196,22 +284,55 @@ func forwardStream(ctx context.Context, req rpcExecutorRequest, pluginStreamID, 
 		HostCallbackID: req.HostCallbackID,
 	})
 	if err != nil {
-		return err
+		return hostStreamReady{}, err
 	}
 	var response pluginapi.HostModelStreamResponse
 	if err := json.Unmarshal(responseRaw, &response); err != nil {
-		return err
+		return hostStreamReady{}, err
 	}
 	if response.StatusCode >= http.StatusBadRequest {
 		_ = closeHostModelStream(response.StreamID)
-		return fmt.Errorf("host model status %d", response.StatusCode)
+		return hostStreamReady{}, fmt.Errorf("host model status %d", response.StatusCode)
 	}
 	if strings.TrimSpace(response.StreamID) == "" {
-		return errors.New("host model stream has no stream id")
+		return hostStreamReady{}, errors.New("host model stream has no stream id")
 	}
-	defer func() { _ = closeHostModelStream(response.StreamID) }()
 	for {
-		chunkRaw, err := callHost(pluginabi.MethodHostModelStreamRead, pluginapi.HostModelStreamReadRequest{StreamID: response.StreamID})
+		chunkRaw, err := hostCall(pluginabi.MethodHostModelStreamRead, pluginapi.HostModelStreamReadRequest{StreamID: response.StreamID})
+		if err != nil {
+			_ = closeHostModelStream(response.StreamID)
+			return hostStreamReady{}, err
+		}
+		var chunk pluginapi.HostModelStreamReadResponse
+		if err := json.Unmarshal(chunkRaw, &chunk); err != nil {
+			_ = closeHostModelStream(response.StreamID)
+			return hostStreamReady{}, err
+		}
+		if chunk.Error != "" {
+			_ = closeHostModelStream(response.StreamID)
+			return hostStreamReady{}, errors.New(chunk.Error)
+		}
+		if len(chunk.Payload) > 0 {
+			return hostStreamReady{streamID: response.StreamID, firstPayload: append([]byte(nil), chunk.Payload...), done: chunk.Done}, nil
+		}
+		if chunk.Done {
+			return hostStreamReady{streamID: response.StreamID, done: true}, nil
+		}
+	}
+}
+
+func continueHostStream(ctx context.Context, ready hostStreamReady, pluginStreamID string) error {
+	defer func() { _ = closeHostModelStream(ready.streamID) }()
+	if len(ready.firstPayload) > 0 {
+		if err := emitPluginStreamChunk(pluginStreamID, ready.firstPayload); err != nil {
+			return err
+		}
+	}
+	if ready.done {
+		return nil
+	}
+	for {
+		chunkRaw, err := hostCall(pluginabi.MethodHostModelStreamRead, pluginapi.HostModelStreamReadRequest{StreamID: ready.streamID})
 		if err != nil {
 			return err
 		}
@@ -233,11 +354,105 @@ func forwardStream(ctx context.Context, req rpcExecutorRequest, pluginStreamID, 
 	}
 }
 
+func nextFailoverDecision(current decide.Decision, routeCtx routeContext, failed map[string]bool) (decide.Decision, error) {
+	tb, err := loadedTable()
+	if err != nil {
+		return decide.Decision{}, err
+	}
+	difficulty := current.State.Difficulty
+	if routeCtx.difficulty != "" {
+		difficulty = routeCtx.difficulty
+	}
+	next, err := decide.Next(decide.Input{
+		Table:      tb,
+		Category:   routeCtx.category,
+		Difficulty: difficulty,
+		HasImage:   routeCtx.hasImage,
+		Available: func(model string) bool {
+			return !failed[model]
+		},
+		Exclude: func(model string) bool {
+			return failed[model] || excluded(model)
+		},
+	}, current.State, true)
+	if err != nil {
+		return decide.Decision{}, err
+	}
+	if next.Model == current.Model || failed[next.Model] {
+		return decide.Decision{}, errors.New("no unfailed model available")
+	}
+	next.Reason = "failover"
+	next.Choice.Reason = "failover"
+	return next, nil
+}
+
+func effectiveRouterHeader(model string, decision decide.Decision, failed []string) string {
+	if len(failed) == 0 {
+		return model + ";" + decision.Reason
+	}
+	raw, _ := json.Marshal(failed)
+	return model + ";failover;failed_from=" + string(raw)
+}
+
+func logFailover(req rpcExecutorRequest, decision decide.Decision, routeCtx routeContext, failed []string) {
+	fields := map[string]any{
+		"session":      hashSession(session.ID(req.Headers, req.OriginalRequest)),
+		"category":     routeCtx.category,
+		"category_p":   routeCtx.categoryProb,
+		"difficulty":   routeCtx.difficulty,
+		"difficulty_p": routeCtx.difficultyProb,
+		"confidence":   routeCtx.confidence,
+		"tier":         decision.Tier,
+		"model":        decision.Model,
+		"thinking":     decision.Thinking,
+		"reason":       "failover",
+		"jev_ms":       routeCtx.jevMillis,
+		"failed_from":  append([]string(nil), failed...),
+	}
+	payload, _ := json.Marshal(fields)
+	hostLog(req.HostCallbackID, "info", "auto-router decision "+string(payload), fields)
+}
+
+// ponytail: match transport errors by text on this host version; switch to numeric status if a future host exposes it.
+func retryableHostFailure(status int, err error) bool {
+	if status == 400 || status == 401 || status == 404 || status == 413 {
+		return false
+	}
+	if status == 429 || status == 502 || status == 503 || status == 529 {
+		return true
+	}
+	if err == nil {
+		return false
+	}
+	message := strings.ToLower(err.Error())
+	for _, marker := range []string{"authentication_error", "invalid_request_error"} {
+		if strings.Contains(message, marker) {
+			return false
+		}
+	}
+	for _, marker := range []string{
+		"rate_limit",
+		"overloaded",
+		"cooling down",
+		"auth_unavailable",
+		"status 429",
+		"status 502",
+		"status 503",
+		"status 529",
+		"stream closed before",
+	} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return strings.Contains(strings.Join(strings.Fields(message), ""), `"type":"api_error"`)
+}
+
 func emitPluginStreamChunk(streamID string, payload []byte) error {
 	if strings.TrimSpace(streamID) == "" {
 		return errors.New("plugin stream id is required")
 	}
-	_, err := callHost(pluginabi.MethodHostStreamEmit, rpcStreamEmitRequest{StreamID: streamID, Payload: payload})
+	_, err := hostCall(pluginabi.MethodHostStreamEmit, rpcStreamEmitRequest{StreamID: streamID, Payload: payload})
 	return err
 }
 
@@ -245,14 +460,14 @@ func closePluginStream(streamID, errMessage string) {
 	if strings.TrimSpace(streamID) == "" {
 		return
 	}
-	_, _ = callHost(pluginabi.MethodHostStreamClose, rpcStreamCloseRequest{StreamID: streamID, Error: strings.TrimSpace(errMessage)})
+	_, _ = hostCall(pluginabi.MethodHostStreamClose, rpcStreamCloseRequest{StreamID: streamID, Error: strings.TrimSpace(errMessage)})
 }
 
 func closeHostModelStream(streamID string) error {
 	if strings.TrimSpace(streamID) == "" {
 		return nil
 	}
-	_, err := callHost(pluginabi.MethodHostModelStreamClose, pluginapi.HostModelStreamCloseRequest{StreamID: streamID})
+	_, err := hostCall(pluginabi.MethodHostModelStreamClose, pluginapi.HostModelStreamCloseRequest{StreamID: streamID})
 	return err
 }
 

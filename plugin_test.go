@@ -52,7 +52,7 @@ func TestRouteDecidesWithoutJev(t *testing.T) {
 	if !response.Handled || response.TargetKind != pluginapi.ModelRouteTargetSelf || response.Reason != "jev-unavailable" {
 		t.Fatalf("response = %+v", response)
 	}
-	if _, ok := pending.Load("route-session"); !ok {
+	if value, ok := pending.Load("route-session"); !ok || value.(pendingRoute).decision.State.Model == "" {
 		t.Fatal("pending decision missing")
 	}
 }
@@ -74,7 +74,7 @@ func TestNewToolOnlyRequestUsesDefaultDecision(t *testing.T) {
 		t.Fatalf("response = %+v", response)
 	}
 	value, ok := pending.Load("tool-session")
-	if !ok || value.(decide.Decision).State.Difficulty != decide.Routine {
+	if !ok || value.(pendingRoute).decision.State.Difficulty != decide.Routine {
 		t.Fatalf("default decision = %#v", value)
 	}
 }
@@ -97,7 +97,7 @@ func TestExistingExtremeToolOnlyStillVisionSwaps(t *testing.T) {
 		t.Fatalf("response = %+v", response)
 	}
 	value, ok := pending.Load("vision-session")
-	if !ok || value.(decide.Decision).Model != "eyes" {
+	if !ok || value.(pendingRoute).decision.Model != "eyes" {
 		t.Fatalf("vision decision = %#v", value)
 	}
 }
@@ -139,21 +139,28 @@ func decodeRouteResponse(t *testing.T, raw []byte) pluginapi.ModelRouteResponse 
 	}
 	return response
 }
-func TestPendingDecisionIsConsumed(t *testing.T) {
+func TestPendingRouteDecisionAndContextAreConsumedTogether(t *testing.T) {
 	configureTest(t)
 	pending = sync.Map{}
-	pending.Store("pending-id", decide.Decision{Choice: decide.Choice{Model: "gpt-5.6-luna", Tier: "mid", Thinking: "high"}})
+	pending.Store("pending-id", pendingRoute{
+		decision: decide.Decision{Choice: decide.Choice{Model: "gpt-5.6-luna", Tier: "mid", Thinking: "high"}},
+		context:  routeContext{category: "backend", hasImage: true},
+	})
 	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
 		Model:           "auto-router",
 		SourceFormat:    "chat-completions",
 		OriginalRequest: []byte(`{"messages":[{"role":"user","content":"hello"}]}`),
 		Metadata:        map[string]any{"request_id": "pending-id"},
 	}}
-	if _, err := decisionForExecutor(req); err != nil {
+	decision, routeCtx, err := decisionForExecutorWithContext(req)
+	if err != nil {
 		t.Fatal(err)
 	}
+	if decision.Model != "gpt-5.6-luna" || routeCtx.category != "backend" || !routeCtx.hasImage {
+		t.Fatalf("pending route = decision=%+v context=%+v", decision, routeCtx)
+	}
 	if _, ok := pending.Load("pending-id"); ok {
-		t.Fatal("pending decision was not consumed")
+		t.Fatal("pending route was not consumed")
 	}
 }
 

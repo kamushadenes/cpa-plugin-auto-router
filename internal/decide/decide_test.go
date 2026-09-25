@@ -49,6 +49,39 @@ func TestChooseRankedByCategoryBenchmark(t *testing.T) {
 	}
 }
 
+func TestChooseExcludeTopCandidateSelectsNextSameTier(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"top-a": mk("top", 10, s("arena-webdev", "xhigh", 1900, 1)),
+		"top-b": mk("top", 20, s("arena-webdev", "xhigh", 1700, 1)),
+	})
+	c, _ := Choose(Input{
+		Table:      tb,
+		Category:   "webdev",
+		Difficulty: Hard,
+		Exclude:    func(model string) bool { return model == "top-a" },
+	})
+	if c.Model != "top-b" || c.Tier != "top" || c.Reason != "ranked" {
+		t.Fatalf("excluding top candidate must select next ranked model in same tier: %+v", c)
+	}
+}
+
+func TestChooseExcludeWholeTierRaisesToNextTier(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"mid-a": mk("mid", 10, s("arena-webdev", "high", 1600, 1)),
+		"mid-b": mk("mid", 20, s("arena-webdev", "high", 1500, 1)),
+		"top":   mk("top", 30, s("arena-webdev", "high", 1800, 1)),
+	})
+	c, _ := Choose(Input{
+		Table:      tb,
+		Category:   "webdev",
+		Difficulty: Routine,
+		Exclude:    func(model string) bool { return model == "mid-a" || model == "mid-b" },
+	})
+	if c.Model != "top" || c.Tier != "top" || c.Reason != "tier-raised" {
+		t.Fatalf("excluding whole tier must raise to next tier: %+v", c)
+	}
+}
+
 func TestTieBreaksOnCost(t *testing.T) {
 	tb := tbl(map[string]table.Model{
 		"a": mk("top", 60, s("arena-webdev", "", 1800, 16)),

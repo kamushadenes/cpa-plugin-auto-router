@@ -87,6 +87,12 @@ type pluginState struct {
 
 var state pluginState
 var store = session.New(time.Hour, 65536)
+
+type pendingRoute struct {
+	decision decide.Decision
+	context  routeContext
+}
+
 var pending sync.Map
 
 func init() {
@@ -251,6 +257,17 @@ type routeMeta struct {
 	difficultyProb map[string]float64
 	confidence     float64
 	jevMillis      int64
+	hasImage       bool
+}
+
+type routeContext struct {
+	category       string
+	categoryProb   map[string]float64
+	difficulty     string
+	difficultyProb map[string]float64
+	confidence     float64
+	jevMillis      int64
+	hasImage       bool
 }
 
 func routeModel(raw []byte) ([]byte, error) {
@@ -267,7 +284,7 @@ func routeModel(raw []byte) ([]byte, error) {
 	}
 	sid := session.ID(req.Headers, req.Body)
 	prev, hasPrev := store.Get(sid)
-	decision, meta, err := decideForWithMeta(req.ModelRouteRequest, prev, hasPrev)
+	decision, meta, routeCtx, err := decideForWithContext(req.ModelRouteRequest, prev, hasPrev)
 	if err != nil {
 		state.mu.Lock()
 		tableErr := state.tableErr
@@ -288,24 +305,29 @@ func routeModel(raw []byte) ([]byte, error) {
 	}
 	key := requestKey(req.Headers, req.Body, req.Metadata)
 	if key != "" {
-		pending.Store(key, decision)
+		pending.Store(key, pendingRoute{decision: decision, context: routeCtx})
 	}
 	return routeResponse(req.HostCallbackID, sid, decision, meta)
 }
 
 func decideFor(req pluginapi.ModelRouteRequest, prev decide.State, hasPrev bool) (decide.Decision, error) {
-	decision, _, err := decideForWithMeta(req, prev, hasPrev)
+	decision, _, _, err := decideForWithContext(req, prev, hasPrev)
 	return decision, err
 }
 
 func decideForWithMeta(req pluginapi.ModelRouteRequest, prev decide.State, hasPrev bool) (decide.Decision, routeMeta, error) {
+	decision, meta, _, err := decideForWithContext(req, prev, hasPrev)
+	return decision, meta, err
+}
+
+func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, hasPrev bool) (decide.Decision, routeMeta, routeContext, error) {
 	cfg := loadedConfig()
 	tb, err := loadedTable()
 	if err != nil {
-		return decide.Decision{}, routeMeta{}, err
+		return decide.Decision{}, routeMeta{}, routeContext{}, err
 	}
 	text, signals := snippet.Extract(req.SourceFormat, req.Body, cfg.SnippetChars)
-	meta := routeMeta{}
+	meta := routeMeta{hasImage: signals.Images > 0}
 	var category, difficulty string
 	jevOK := false
 	if hasPrev && (prev.Difficulty == decide.Extreme || !signals.HasNewUserMessage) {
@@ -346,9 +368,9 @@ func decideForWithMeta(req pluginapi.ModelRouteRequest, prev decide.State, hasPr
 	input := decide.Input{Table: tb, Category: category, Difficulty: difficulty, HasImage: signals.Images > 0, Exclude: excluded}
 	decision, err := decide.Next(input, prev, jevOK)
 	if err != nil {
-		return decide.Decision{}, routeMeta{}, err
+		return decide.Decision{}, routeMeta{}, routeContext{}, err
 	}
-	return decision, meta, nil
+	return decision, meta, routeContext{category: category, categoryProb: meta.categoryProb, difficulty: difficulty, difficultyProb: meta.difficultyProb, confidence: meta.confidence, jevMillis: meta.jevMillis, hasImage: signals.Images > 0}, nil
 }
 
 func routeResponse(callbackID, sid string, decision decide.Decision, meta routeMeta) ([]byte, error) {
@@ -404,7 +426,7 @@ func hashSession(raw string) string {
 }
 
 func hostLog(callbackID, level, message string, fields map[string]any) {
-	_, _ = callHost(pluginabi.MethodHostLog, map[string]any{
+	_, _ = hostCall(pluginabi.MethodHostLog, map[string]any{
 		"host_callback_id": callbackID,
 		"level":            level,
 		"message":          message,
