@@ -13,15 +13,19 @@ import (
 )
 
 type entry struct {
-	state decide.State
-	at    time.Time
+	state           decide.State
+	at              time.Time
+	generation      uint64
+	firstGeneration uint64
+	ready           bool
 }
 
 type Store struct {
-	mu      sync.Mutex
-	entries map[string]entry
-	ttl     time.Duration
-	max     int
+	mu             sync.Mutex
+	entries        map[string]entry
+	ttl            time.Duration
+	max            int
+	nextGeneration uint64
 }
 
 func New(ttl time.Duration, max int) *Store {
@@ -32,6 +36,32 @@ func New(ttl time.Duration, max int) *Store {
 	}
 }
 
+func (s *Store) Begin(id string) (decide.State, bool, uint64) {
+	if id == "" || s.max <= 0 {
+		return decide.State{}, false, 0
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.nextGeneration++
+	generation := s.nextGeneration
+	now := time.Now()
+	e, ok := s.entries[id]
+	if ok && s.ttl > 0 && now.Sub(e.at) >= s.ttl {
+		delete(s.entries, id)
+		ok = false
+	}
+	if !ok {
+		s.entries[id] = entry{at: now, generation: generation, firstGeneration: generation}
+		s.evictLocked()
+		return decide.State{}, false, generation
+	}
+	e.generation = generation
+	e.at = now
+	s.entries[id] = e
+	return e.state, e.ready, generation
+}
+
 func (s *Store) Get(id string) (decide.State, bool) {
 	if id == "" {
 		return decide.State{}, false
@@ -40,7 +70,7 @@ func (s *Store) Get(id string) (decide.State, bool) {
 	defer s.mu.Unlock()
 
 	e, ok := s.entries[id]
-	if !ok {
+	if !ok || !e.ready {
 		return decide.State{}, false
 	}
 	if s.ttl > 0 && time.Since(e.at) >= s.ttl {
@@ -50,14 +80,26 @@ func (s *Store) Get(id string) (decide.State, bool) {
 	return e.state, true
 }
 
-func (s *Store) Put(id string, state decide.State) {
+func (s *Store) Put(id string, generation uint64, state decide.State) decide.State {
 	if id == "" || s.max <= 0 {
-		return
+		return state
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.entries[id] = entry{state: state, at: time.Now()}
+	now := time.Now()
+	e, ok := s.entries[id]
+	if !ok || (s.ttl > 0 && now.Sub(e.at) >= s.ttl) || generation < e.firstGeneration {
+		return decide.State{}
+	}
+	e.state = mergeState(e.state, state, e.generation, generation)
+	e.ready = true
+	e.at = now
+	s.entries[id] = e
+	return e.state
+}
+
+func (s *Store) evictLocked() {
 	// ponytail: O(n) eviction, fine at 65k; use a heap only if profiling requires it.
 	for len(s.entries) > s.max {
 		oldestID := ""
@@ -69,6 +111,76 @@ func (s *Store) Put(id string, state decide.State) {
 			}
 		}
 		delete(s.entries, oldestID)
+	}
+}
+
+func mergeState(stored, incoming decide.State, storedGeneration, incomingGeneration uint64) decide.State {
+	merged := stored
+	floorRaised := false
+	merged.Difficulty, floorRaised = maxFloorValue(merged.Difficulty, incoming.Difficulty, difficultyRank)
+	var raised bool
+	merged.Tier, raised = maxFloorValue(merged.Tier, incoming.Tier, tierRank)
+	floorRaised = floorRaised || raised
+	merged.Thinking, raised = maxFloorValue(merged.Thinking, incoming.Thinking, thinkingRank)
+	floorRaised = floorRaised || raised
+
+	if incoming.Model == "" {
+		return merged
+	}
+	incomingAtMergedFloor := stateFloorAtLeast(incoming, merged)
+	if incomingAtMergedFloor && (floorRaised || incomingGeneration >= storedGeneration) {
+		merged.Model = incoming.Model
+	}
+	return merged
+}
+
+func maxFloorValue(current, incoming string, rank func(string) int) (string, bool) {
+	if current == "" && incoming != "" {
+		return incoming, true
+	}
+	if rank(incoming) > rank(current) {
+		return incoming, true
+	}
+	return current, false
+}
+
+func stateFloorAtLeast(a, b decide.State) bool {
+	return difficultyRank(a.Difficulty) >= difficultyRank(b.Difficulty) && tierRank(a.Tier) >= tierRank(b.Tier) && thinkingRank(a.Thinking) >= thinkingRank(b.Thinking)
+}
+
+func difficultyRank(value string) int {
+	rank := decide.Rank(value)
+	if rank >= 0 {
+		return rank
+	}
+	return -1
+}
+
+func tierRank(value string) int {
+	switch value {
+	case "flash":
+		return 0
+	case "mid":
+		return 1
+	case "top":
+		return 2
+	default:
+		return -1
+	}
+}
+
+func thinkingRank(value string) int {
+	switch value {
+	case "low":
+		return 0
+	case "high":
+		return 1
+	case "xhigh":
+		return 2
+	case "max":
+		return 3
+	default:
+		return -1
 	}
 }
 

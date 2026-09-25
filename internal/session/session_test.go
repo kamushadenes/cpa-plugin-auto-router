@@ -51,7 +51,8 @@ func TestIDDoesNotHashNonUserContent(t *testing.T) {
 
 func TestStoreTTLAndEvict(t *testing.T) {
 	s := New(50*time.Millisecond, 2)
-	s.Put("a", decide.State{Model: "m"})
+	_, _, generation := s.Begin("a")
+	s.Put("a", generation, decide.State{Model: "m"})
 	if _, ok := s.Get("a"); !ok {
 		t.Fatal("get")
 	}
@@ -59,10 +60,27 @@ func TestStoreTTLAndEvict(t *testing.T) {
 	if _, ok := s.Get("a"); ok {
 		t.Fatal("expired")
 	}
-	s.Put("1", decide.State{})
-	s.Put("2", decide.State{})
-	s.Put("3", decide.State{})
+	for _, id := range []string{"1", "2", "3"} {
+		_, _, generation = s.Begin(id)
+		s.Put(id, generation, decide.State{})
+	}
 	if _, ok := s.Get("1"); ok {
 		t.Fatal("oldest evicted")
+	}
+}
+
+func TestStorePutPreservesHigherDifficulty(t *testing.T) {
+	s := New(time.Hour, 2)
+	_, _, olderGeneration := s.Begin("session")
+	_, _, newerGeneration := s.Begin("session")
+	s.Put("session", olderGeneration, decide.State{Difficulty: decide.Hard, Model: "hard-model", Thinking: "xhigh", Tier: "top"})
+	s.Put("session", newerGeneration, decide.State{Difficulty: decide.Routine, Model: "routine-model", Thinking: "high", Tier: "mid"})
+
+	state, ok := s.Get("session")
+	if !ok {
+		t.Fatal("session missing")
+	}
+	if state.Difficulty != decide.Hard || state.Model != "hard-model" || state.Thinking != "xhigh" || state.Tier != "top" {
+		t.Fatalf("state downgraded: %#v", state)
 	}
 }

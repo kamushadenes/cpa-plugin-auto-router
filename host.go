@@ -79,7 +79,7 @@ func execute(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
-	decision, routeCtx, err := decisionForExecutorWithContext(req)
+	decision, routeCtx, generation, err := decisionForExecutorWithContext(req)
 	if err != nil {
 		return errorEnvelope("executor_error", err.Error()), nil
 	}
@@ -112,7 +112,7 @@ func execute(raw []byte) ([]byte, error) {
 				return errorEnvelope("executor_error", "invalid host model response"), nil
 			}
 			if hostResponse.StatusCode < http.StatusBadRequest {
-				persistEffectiveSession(req, decision)
+				persistEffectiveSession(req, decision, generation)
 				headers := cloneHeaders(hostResponse.Headers)
 				if headers == nil {
 					headers = make(http.Header)
@@ -159,7 +159,7 @@ func executeStream(raw []byte) ([]byte, error) {
 	if !beginPluginStream() {
 		return errorEnvelope("executor_error", "plugin is shutting down"), nil
 	}
-	decision, routeCtx, err := decisionForExecutorWithContext(req)
+	decision, routeCtx, generation, err := decisionForExecutorWithContext(req)
 	if err != nil {
 		endPluginStream()
 		return errorEnvelope("executor_error", err.Error()), nil
@@ -193,7 +193,7 @@ func executeStream(raw []byte) ([]byte, error) {
 		endPluginStream()
 		return errorEnvelope("executor_error", lastErr.Error()), nil
 	}
-	persistEffectiveSession(req, decision)
+	persistEffectiveSession(req, decision, generation)
 	model := routedModel(decision)
 	if len(failed) > 0 {
 		logFailover(req, decision, routeCtx, failed)
@@ -214,21 +214,21 @@ func executeStream(raw []byte) ([]byte, error) {
 }
 
 func decisionForExecutor(req rpcExecutorRequest) (decide.Decision, error) {
-	decision, _, err := decisionForExecutorWithContext(req)
+	decision, _, _, err := decisionForExecutorWithContext(req)
 	return decision, err
 }
 
-func decisionForExecutorWithContext(req rpcExecutorRequest) (decide.Decision, routeContext, error) {
+func decisionForExecutorWithContext(req rpcExecutorRequest) (decide.Decision, routeContext, uint64, error) {
 	key := requestKey(req.Headers, req.OriginalRequest, req.Metadata)
 	if key != "" {
 		if value, ok := pending.LoadAndDelete(key); ok {
 			if route, ok := value.(pendingRoute); ok {
-				return route.decision, route.context, nil
+				return route.decision, route.context, route.generation, nil
 			}
 		}
 	}
 	sid := session.ID(req.Headers, req.OriginalRequest)
-	prev, hasPrev := store.Get(sid)
+	prev, hasPrev, generation := store.Begin(sid)
 	request := pluginapi.ModelRouteRequest{
 		SourceFormat:   req.SourceFormat,
 		RequestedModel: req.Model,
@@ -238,17 +238,21 @@ func decisionForExecutorWithContext(req rpcExecutorRequest) (decide.Decision, ro
 	}
 	decision, _, routeCtx, err := decideForWithContext(request, prev, hasPrev)
 	if err != nil {
-		return decide.Decision{}, routeContext{}, err
+		return decide.Decision{}, routeContext{}, 0, err
 	}
 	if sid != "" {
-		store.Put(sid, decision.State)
+		effective := store.Put(sid, generation, decision.State)
+		decision, err = reconcileRouteDecision(decision, effective, routeCtx)
+		if err != nil {
+			return decide.Decision{}, routeContext{}, 0, err
+		}
 	}
-	return decision, routeCtx, nil
+	return decision, routeCtx, generation, nil
 }
 
-func persistEffectiveSession(req rpcExecutorRequest, decision decide.Decision) {
+func persistEffectiveSession(req rpcExecutorRequest, decision decide.Decision, generation uint64) {
 	if sid := session.ID(req.Headers, req.OriginalRequest); sid != "" {
-		store.Put(sid, decision.State)
+		store.Put(sid, generation, decision.State)
 	}
 }
 

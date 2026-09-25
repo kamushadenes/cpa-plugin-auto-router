@@ -174,6 +174,7 @@ func seedHostDecision(t *testing.T, sessionID, model string, streamID ...string)
 		Reason: "new",
 		State:  decide.State{Difficulty: decide.Routine, Model: model, Thinking: "high", Tier: "mid"},
 	}
+	_, _, generation := store.Begin(sessionID)
 	pending.Store(sessionID, pendingRoute{decision: decision, context: routeContext{
 		category:             "backend",
 		factors:              decide.Factors{"touches_code": 1},
@@ -182,8 +183,8 @@ func seedHostDecision(t *testing.T, sessionID, model string, streamID ...string)
 		categoryConfidence:   1,
 		difficultyConfidence: 1,
 		difficulty:           decision.State.Difficulty,
-	}})
-	store.Put(sessionID, decision.State)
+	}, generation: generation})
+	store.Put(sessionID, generation, decision.State)
 	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
 		Model:           pluginIdentifier,
 		SourceFormat:    "chat-completions",
@@ -295,6 +296,54 @@ func waitPluginClose(t *testing.T, fake *fakeHostCalls) rpcStreamCloseRequest {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for plugin stream close")
 		return rpcStreamCloseRequest{}
+	}
+}
+
+func TestStaleEffectiveSessionDoesNotOverwriteVisionSwap(t *testing.T) {
+	configureTest(t)
+	store = session.New(time.Hour, 65536)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	_, _, generation := store.Begin("same-tier-session")
+	store.Put("same-tier-session", generation, decide.State{Difficulty: decide.Hard, Model: "blind", Thinking: "xhigh", Tier: "top"})
+
+	textRequest := pluginapi.ModelRouteRequest{
+		RequestedModel: pluginIdentifier,
+		SourceFormat:   "chat-completions",
+		Headers:        http.Header{"X-Session-ID": []string{"same-tier-session"}},
+		Body:           []byte(`{"messages":[{"role":"user","content":"keep the current model"}]}`),
+	}
+	if _, err := routeModel(marshalRoute(t, textRequest)); err != nil {
+		t.Fatal(err)
+	}
+	pendingValue, ok := pending.Load("same-tier-session")
+	if !ok {
+		t.Fatal("older route decision missing")
+	}
+	olderRoute := pendingValue.(pendingRoute)
+	older := olderRoute.decision
+	if older.Model != "blind" {
+		t.Fatalf("older route model = %q, want blind", older.Model)
+	}
+
+	imageRequest := textRequest
+	imageRequest.Body = []byte(`{"messages":[{"role":"user","content":[{"type":"text","text":"look at this"},{"type":"image_url","image_url":{"url":"https://example.invalid/image.png"}}]}]}`)
+	if _, err := routeModel(marshalRoute(t, imageRequest)); err != nil {
+		t.Fatal(err)
+	}
+	state, ok := store.Get("same-tier-session")
+	if !ok || state.Model != "eyes" || state.Tier != "top" || state.Thinking != "xhigh" {
+		t.Fatalf("vision swap state = %#v, present=%v", state, ok)
+	}
+
+	persistEffectiveSession(rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		SourceFormat:    textRequest.SourceFormat,
+		OriginalRequest: textRequest.Body,
+		Headers:         textRequest.Headers,
+	}}, older, olderRoute.generation)
+	state, ok = store.Get("same-tier-session")
+	if !ok || state.Model != "eyes" || state.Tier != "top" || state.Thinking != "xhigh" {
+		t.Fatalf("stale completion replaced newer model = %#v, present=%v", state, ok)
 	}
 }
 

@@ -6,12 +6,99 @@ import (
 	"net/http/httptest"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
+	"github.com/chloeassistant/cpa-plugin-auto-router/internal/session"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )
+
+func TestOverlappingRoutesKeepHigherDifficulty(t *testing.T) {
+	routineResponse := calibratedJevResponse(0.9, 0.5)
+	hardResponse := strings.Replace(routineResponse, `"0":0,"1":1,"2":0,"3":0,"4":0`, `"0":0,"1":0,"2":0,"3":1,"4":0`, 1)
+	routineStarted := make(chan struct{})
+	releaseRoutine := make(chan struct{})
+	var startOnce sync.Once
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var request struct {
+			State struct {
+				Item string `json:"item"`
+			} `json:"state"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if strings.Contains(request.State.Item, "routine") {
+			startOnce.Do(func() { close(routineStarted) })
+			<-releaseRoutine
+			_, _ = w.Write([]byte(routineResponse))
+			return
+		}
+		_, _ = w.Write([]byte(hardResponse))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	store = session.New(time.Hour, 65536)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+
+	routine := pluginapi.ModelRouteRequest{
+		RequestedModel: pluginIdentifier,
+		SourceFormat:   "chat-completions",
+		Headers:        http.Header{"X-Session-ID": []string{"overlap-session"}},
+		Body:           []byte(`{"messages":[{"role":"user","content":"routine request"}]}`),
+	}
+	hard := routine
+	hard.Body = []byte(`{"messages":[{"role":"user","content":"hard request"}]}`)
+
+	routineDone := make(chan error, 1)
+	go func() {
+		_, err := routeModel(marshalRoute(t, routine))
+		routineDone <- err
+	}()
+	select {
+	case <-routineStarted:
+	case <-time.After(time.Second):
+		t.Fatal("routine classification did not start")
+	}
+
+	hardDone := make(chan error, 1)
+	go func() {
+		_, err := routeModel(marshalRoute(t, hard))
+		hardDone <- err
+	}()
+	select {
+	case err := <-hardDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("hard classification did not complete")
+	}
+
+	state, ok := store.Get("overlap-session")
+	if !ok || state.Difficulty != decide.Hard || state.Tier != "top" || state.Thinking != "xhigh" {
+		t.Fatalf("hard completion state = %#v, present=%v", state, ok)
+	}
+
+	close(releaseRoutine)
+	select {
+	case err := <-routineDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("routine classification did not complete")
+	}
+	state, ok = store.Get("overlap-session")
+	if !ok || state.Difficulty != decide.Hard || state.Tier != "top" || state.Thinking != "xhigh" {
+		t.Fatalf("stale routine completion downgraded state = %#v, present=%v", state, ok)
+	}
+}
 
 func calibratedJevResponse(touchesCode, frontend float64) string {
 	return `{"answers":{"touches_code":{"noul":` + formatFloat(touchesCode) + `},"frontend":{"noul":` + formatFloat(frontend) + `},"fix_existing":{"noul":0.1},"judges_existing":{"noul":0.1},"design_only":{"noul":0.1},"many_steps":{"noul":0.1},"transform_only":{"noul":0.1},"exact_answer":{"noul":0.1},"writes_tests":{"noul":0.1},"effort":{"probabilities":{"0":0,"1":1,"2":0,"3":0,"4":0}}}}`
@@ -222,8 +309,8 @@ func TestNewToolOnlyRequestUsesDefaultDecision(t *testing.T) {
 }
 
 func TestExistingExtremeToolOnlyStillVisionSwaps(t *testing.T) {
-	configureTest(t)
-	store.Put("vision-session", decide.State{Difficulty: decide.Extreme, Model: "blind", Thinking: "max", Tier: "top"})
+	_, _, generation := store.Begin("vision-session")
+	store.Put("vision-session", generation, decide.State{Difficulty: decide.Extreme, Model: "blind", Thinking: "max", Tier: "top"})
 	request := pluginapi.ModelRouteRequest{
 		RequestedModel: "auto-router",
 		SourceFormat:   "chat-completions",
@@ -308,7 +395,7 @@ func TestPendingRouteDecisionAndContextAreConsumedTogether(t *testing.T) {
 		OriginalRequest: []byte(`{"messages":[{"role":"user","content":"hello"}]}`),
 		Metadata:        map[string]any{"request_id": "pending-id"},
 	}}
-	decision, routeCtx, err := decisionForExecutorWithContext(req)
+	decision, routeCtx, _, err := decisionForExecutorWithContext(req)
 	if err != nil {
 		t.Fatal(err)
 	}

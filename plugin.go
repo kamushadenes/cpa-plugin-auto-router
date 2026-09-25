@@ -91,8 +91,9 @@ var (
 )
 
 type pendingRoute struct {
-	decision decide.Decision
-	context  routeContext
+	decision   decide.Decision
+	context    routeContext
+	generation uint64
 }
 
 var pending sync.Map
@@ -291,7 +292,7 @@ func routeModel(raw []byte) ([]byte, error) {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
 	}
 	sid := session.ID(req.Headers, req.Body)
-	prev, hasPrev := store.Get(sid)
+	prev, hasPrev, generation := store.Begin(sid)
 	decision, meta, routeCtx, err := decideForWithContext(req.ModelRouteRequest, prev, hasPrev)
 	if err != nil {
 		state.mu.Lock()
@@ -309,13 +310,37 @@ func routeModel(raw []byte) ([]byte, error) {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
 	}
 	if sid != "" {
-		store.Put(sid, decision.State)
+		effective := store.Put(sid, generation, decision.State)
+		decision, err = reconcileRouteDecision(decision, effective, routeCtx)
+		if err != nil {
+			return nil, err
+		}
 	}
 	key := requestKey(req.Headers, req.Body, req.Metadata)
 	if key != "" {
-		pending.Store(key, pendingRoute{decision: decision, context: routeCtx})
+		pending.Store(key, pendingRoute{decision: decision, context: routeCtx, generation: generation})
 	}
 	return routeResponse(req.HostCallbackID, sid, decision, meta)
+}
+
+func reconcileRouteDecision(decision decide.Decision, effective decide.State, routeCtx routeContext) (decide.Decision, error) {
+	if effective.Model == "" || (effective.Difficulty == decision.State.Difficulty && effective.Tier == decision.State.Tier && effective.Thinking == decision.State.Thinking) {
+		return decision, nil
+	}
+	tb, err := loadedTable()
+	if err != nil {
+		return decide.Decision{}, err
+	}
+	reconciled, err := decide.Next(decide.Input{
+		Table:      tb,
+		Category:   routeCtx.category,
+		Difficulty: effective.Difficulty,
+		HasImage:   routeCtx.hasImage,
+	}, effective, true)
+	if err != nil {
+		return decide.Decision{}, err
+	}
+	return reconciled, nil
 }
 
 func decideFor(req pluginapi.ModelRouteRequest, prev decide.State, hasPrev bool) (decide.Decision, error) {
