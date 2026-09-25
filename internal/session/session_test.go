@@ -50,13 +50,15 @@ func TestIDDoesNotHashNonUserContent(t *testing.T) {
 }
 
 func TestStoreTTLAndEvict(t *testing.T) {
+	clock := time.Unix(100, 0)
 	s := New(50*time.Millisecond, 2)
+	s.now = func() time.Time { return clock }
 	_, _, generation := s.Begin("a")
 	s.Put("a", generation, decide.State{Model: "m"})
 	if _, ok := s.Get("a"); !ok {
 		t.Fatal("get")
 	}
-	time.Sleep(60 * time.Millisecond)
+	clock = clock.Add(50 * time.Millisecond)
 	if _, ok := s.Get("a"); ok {
 		t.Fatal("expired")
 	}

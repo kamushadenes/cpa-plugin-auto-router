@@ -26,6 +26,7 @@ type Store struct {
 	ttl            time.Duration
 	max            int
 	nextGeneration uint64
+	now            func() time.Time
 }
 
 func New(ttl time.Duration, max int) *Store {
@@ -33,6 +34,7 @@ func New(ttl time.Duration, max int) *Store {
 		entries: make(map[string]entry),
 		ttl:     ttl,
 		max:     max,
+		now:     time.Now,
 	}
 }
 
@@ -45,7 +47,7 @@ func (s *Store) Begin(id string) (decide.State, bool, uint64) {
 
 	s.nextGeneration++
 	generation := s.nextGeneration
-	now := time.Now()
+	now := s.now()
 	e, ok := s.entries[id]
 	if ok && s.ttl > 0 && now.Sub(e.at) >= s.ttl {
 		delete(s.entries, id)
@@ -73,7 +75,7 @@ func (s *Store) Get(id string) (decide.State, bool) {
 	if !ok || !e.ready {
 		return decide.State{}, false
 	}
-	if s.ttl > 0 && time.Since(e.at) >= s.ttl {
+	if s.ttl > 0 && s.now().Sub(e.at) >= s.ttl {
 		delete(s.entries, id)
 		return decide.State{}, false
 	}
@@ -87,7 +89,7 @@ func (s *Store) Put(id string, generation uint64, state decide.State) decide.Sta
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	now := time.Now()
+	now := s.now()
 	e, ok := s.entries[id]
 	if !ok || (s.ttl > 0 && now.Sub(e.at) >= s.ttl) || generation < e.firstGeneration {
 		return decide.State{}
