@@ -1,0 +1,9 @@
+[Unit]
+Description=Rebuild auto-router benchmark table
+After=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/hermes/orca-workspaces/cpa-plugin-auto-router/auto-router-impl
+EnvironmentFile=/home/hermes/cliproxyapi-test/env
+ExecStart=/home/hermes/.local/bin/uv run --with pyyaml --with pyarrow --python 3.12 python -m updater --catalog http://127.0.0.1:8318 --catalog-key-file /home/hermes/cliproxyapi-test/api-key --tiers table/tiers.yaml --out /home/hermes/cliproxyapi-test/plugins/auto-router/models.yaml --openrouter-key-env OPENROUTER_API_KEY

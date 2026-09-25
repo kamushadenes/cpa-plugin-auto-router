@@ -1,0 +1,1039 @@
+{
+ "category": [
+  {
+   "id": "A1",
+   "request": "Design a zero-downtime migration plan to move a 40-table Postgres schema to RLS multi-tenancy; list risks and rollback.",
+   "factors": {
+    "touches_code": 0.13,
+    "frontend": 0.02,
+    "fix_existing": 0.06,
+    "judges_existing": 0.04,
+    "design_only": 0.96,
+    "many_steps": 0.28,
+    "transform_only": 0.02,
+    "exact_answer": 0.08,
+    "writes_tests": 0.02
+   },
+   "expected": "spec-design",
+   "jev_direct": "spec-design",
+   "jev_direct_confidence": 0.99
+  },
+  {
+   "id": "A2",
+   "request": "Review this PR for security issues; the auth middleware was rewritten.",
+   "factors": {
+    "touches_code": 0.08,
+    "frontend": 0.05,
+    "fix_existing": 0.16,
+    "judges_existing": 0.96,
+    "design_only": 0.07,
+    "many_steps": 0.47,
+    "transform_only": 0.07,
+    "exact_answer": 0.03,
+    "writes_tests": 0.02
+   },
+   "expected": "review",
+   "jev_direct": "review",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "A3",
+   "request": "Review this PR and fix whatever you find.",
+   "factors": {
+    "touches_code": 0.95,
+    "frontend": 0.13,
+    "fix_existing": 0.59,
+    "judges_existing": 0.94,
+    "design_only": 0.05,
+    "many_steps": 0.68,
+    "transform_only": 0.03,
+    "exact_answer": 0.03,
+    "writes_tests": 0.05
+   },
+   "expected": "review",
+   "jev_direct": "review",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "A4",
+   "request": "The login page CSS is broken on mobile; fix it.",
+   "factors": {
+    "touches_code": 0.97,
+    "frontend": 0.95,
+    "fix_existing": 0.97,
+    "judges_existing": 0.18,
+    "design_only": 0.06,
+    "many_steps": 0.45,
+    "transform_only": 0.03,
+    "exact_answer": 0.02,
+    "writes_tests": 0.01
+   },
+   "expected": "debugging",
+   "jev_direct": "webdev",
+   "jev_direct_confidence": 0.63
+  },
+  {
+   "id": "A5",
+   "request": "Build a React dashboard page with a table and filters.",
+   "factors": {
+    "touches_code": 0.98,
+    "frontend": 0.98,
+    "fix_existing": 0.02,
+    "judges_existing": 0.01,
+    "design_only": 0.09,
+    "many_steps": 0.46,
+    "transform_only": 0.02,
+    "exact_answer": 0.02,
+    "writes_tests": 0.02
+   },
+   "expected": "webdev",
+   "jev_direct": "webdev",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "A6",
+   "request": "Add a Stripe webhook handler with signature verification and idempotency.",
+   "factors": {
+    "touches_code": 0.97,
+    "frontend": 0.03,
+    "fix_existing": 0.04,
+    "judges_existing": 0.02,
+    "design_only": 0.13,
+    "many_steps": 0.47,
+    "transform_only": 0.02,
+    "exact_answer": 0.02,
+    "writes_tests": 0.04
+   },
+   "expected": "backend",
+   "jev_direct": "backend",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "A7",
+   "request": "Migrate the repo from npm to pnpm, update CI, and make all tests pass.",
+   "factors": {
+    "touches_code": 0.97,
+    "frontend": 0.04,
+    "fix_existing": 0.58,
+    "judges_existing": 0.7,
+    "design_only": 0.13,
+    "many_steps": 0.95,
+    "transform_only": 0.02,
+    "exact_answer": 0.04,
+    "writes_tests": 0.09
+   },
+   "expected": "agentic-terminal",
+   "jev_direct": "agentic-terminal",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "A8",
+   "request": "Write a commit message for these changes.",
+   "factors": {
+    "touches_code": 0.11,
+    "frontend": 0.02,
+    "fix_existing": 0.05,
+    "judges_existing": 0.03,
+    "design_only": 0.16,
+    "many_steps": 0.33,
+    "transform_only": 0.26,
+    "exact_answer": 0.02,
+    "writes_tests": 0.01
+   },
+   "expected": "writing",
+   "jev_direct": "writing",
+   "jev_direct_confidence": 0.99
+  },
+  {
+   "id": "A9",
+   "request": "Extract all email addresses from this log and output JSON.",
+   "factors": {
+    "touches_code": 0.17,
+    "frontend": 0.02,
+    "fix_existing": 0.04,
+    "judges_existing": 0.03,
+    "design_only": 0.04,
+    "many_steps": 0.27,
+    "transform_only": 0.96,
+    "exact_answer": 0.13,
+    "writes_tests": 0.01
+   },
+   "expected": "extraction",
+   "jev_direct": "extraction",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "A10",
+   "request": "What is the 95th percentile of these latencies: 12, 15, 18, 21, 40, 300?",
+   "factors": {
+    "touches_code": 0.02,
+    "frontend": 0.01,
+    "fix_existing": 0.03,
+    "judges_existing": 0.01,
+    "design_only": 0.04,
+    "many_steps": 0.05,
+    "transform_only": 0.51,
+    "exact_answer": 0.98,
+    "writes_tests": 0.01
+   },
+   "expected": "math-data",
+   "jev_direct": "math-data",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "B1",
+   "request": "Write unit tests for the parser in internal/table.",
+   "factors": {
+    "touches_code": 0.98,
+    "frontend": 0.02,
+    "fix_existing": 0.05,
+    "judges_existing": 0.92,
+    "design_only": 0.05,
+    "many_steps": 0.51,
+    "transform_only": 0.03,
+    "exact_answer": 0.03,
+    "writes_tests": 0.99
+   },
+   "expected": "review",
+   "jev_direct": "review",
+   "jev_direct_confidence": 0.87
+  },
+  {
+   "id": "B2",
+   "request": "Explain why this test is flaky.",
+   "factors": {
+    "touches_code": 0.04,
+    "frontend": 0.02,
+    "fix_existing": 0.8,
+    "judges_existing": 0.79,
+    "design_only": 0.3,
+    "many_steps": 0.34,
+    "transform_only": 0.1,
+    "exact_answer": 0.03,
+    "writes_tests": 0.02
+   },
+   "expected": "debugging",
+   "jev_direct": "debugging",
+   "jev_direct_confidence": 0.98
+  },
+  {
+   "id": "B3",
+   "request": "Sketch the architecture for a multi-tenant auth service; then implement the token endpoint.",
+   "factors": {
+    "touches_code": 0.97,
+    "frontend": 0.04,
+    "fix_existing": 0.03,
+    "judges_existing": 0.02,
+    "design_only": 0.28,
+    "many_steps": 0.49,
+    "transform_only": 0.02,
+    "exact_answer": 0.03,
+    "writes_tests": 0.02
+   },
+   "expected": "backend",
+   "jev_direct": "backend",
+   "jev_direct_confidence": 0.99
+  },
+  {
+   "id": "B4",
+   "request": "Write a script that computes monthly churn from users.csv.",
+   "factors": {
+    "touches_code": 0.99,
+    "frontend": 0.03,
+    "fix_existing": 0.02,
+    "judges_existing": 0.02,
+    "design_only": 0.04,
+    "many_steps": 0.54,
+    "transform_only": 0.49,
+    "exact_answer": 0.54,
+    "writes_tests": 0.02
+   },
+   "expected": "backend",
+   "jev_direct": "agentic-terminal",
+   "jev_direct_confidence": 0.28
+  },
+  {
+   "id": "B5",
+   "request": "Summarize what this Go package does.",
+   "factors": {
+    "touches_code": 0.03,
+    "frontend": 0.02,
+    "fix_existing": 0.05,
+    "judges_existing": 0.19,
+    "design_only": 0.42,
+    "many_steps": 0.28,
+    "transform_only": 0.74,
+    "exact_answer": 0.02,
+    "writes_tests": 0.01
+   },
+   "expected": "extraction",
+   "jev_direct": "extraction",
+   "jev_direct_confidence": 0.46
+  },
+  {
+   "id": "B6",
+   "request": "Convert this SQL schema to a Prisma schema.",
+   "factors": {
+    "touches_code": 0.98,
+    "frontend": 0.02,
+    "fix_existing": 0.05,
+    "judges_existing": 0.04,
+    "design_only": 0.06,
+    "many_steps": 0.21,
+    "transform_only": 0.81,
+    "exact_answer": 0.02,
+    "writes_tests": 0.01
+   },
+   "expected": "backend",
+   "jev_direct": "backend",
+   "jev_direct_confidence": 0.7
+  },
+  {
+   "id": "B7",
+   "request": "Investigate why the nightly deploy fails; check logs, fix the pipeline, and rerun it.",
+   "factors": {
+    "touches_code": 0.85,
+    "frontend": 0.04,
+    "fix_existing": 0.98,
+    "judges_existing": 0.6,
+    "design_only": 0.16,
+    "many_steps": 0.91,
+    "transform_only": 0.03,
+    "exact_answer": 0.04,
+    "writes_tests": 0.02
+   },
+   "expected": "debugging",
+   "jev_direct": "debugging",
+   "jev_direct_confidence": 0.94
+  },
+  {
+   "id": "B8",
+   "request": "Refactor the checkout flow so the cart page loads under 200 ms.",
+   "factors": {
+    "touches_code": 0.97,
+    "frontend": 0.76,
+    "fix_existing": 0.43,
+    "judges_existing": 0.1,
+    "design_only": 0.21,
+    "many_steps": 0.63,
+    "transform_only": 0.02,
+    "exact_answer": 0.51,
+    "writes_tests": 0.02
+   },
+   "expected": "webdev",
+   "jev_direct": "webdev",
+   "jev_direct_confidence": 0.95
+  },
+  {
+   "id": "C1",
+   "request": "Add integration tests for the payments API and wire them into CI.",
+   "factors": {
+    "touches_code": 0.98,
+    "frontend": 0.02,
+    "fix_existing": 0.05,
+    "judges_existing": 0.75,
+    "design_only": 0.09,
+    "many_steps": 0.86,
+    "transform_only": 0.02,
+    "exact_answer": 0.03,
+    "writes_tests": 0.99
+   },
+   "expected": "agentic-terminal",
+   "jev_direct": "backend",
+   "jev_direct_confidence": 0.72
+  },
+  {
+   "id": "C2",
+   "request": "Is this Terraform module safe to apply? Point out anything risky.",
+   "factors": {
+    "touches_code": 0.05,
+    "frontend": 0.03,
+    "fix_existing": 0.07,
+    "judges_existing": 0.85,
+    "design_only": 0.59,
+    "many_steps": 0.36,
+    "transform_only": 0.28,
+    "exact_answer": 0.03,
+    "writes_tests": 0.01
+   },
+   "expected": "review",
+   "jev_direct": "review",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "C3",
+   "request": "Users report 500s after the last deploy; find the cause.",
+   "factors": {
+    "touches_code": 0.12,
+    "frontend": 0.06,
+    "fix_existing": 0.96,
+    "judges_existing": 0.44,
+    "design_only": 0.33,
+    "many_steps": 0.78,
+    "transform_only": 0.04,
+    "exact_answer": 0.06,
+    "writes_tests": 0.01
+   },
+   "expected": "debugging",
+   "jev_direct": "debugging",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "C4",
+   "request": "The dashboard chart shows wrong totals; fix the query.",
+   "factors": {
+    "touches_code": 0.95,
+    "frontend": 0.18,
+    "fix_existing": 0.96,
+    "judges_existing": 0.43,
+    "design_only": 0.09,
+    "many_steps": 0.4,
+    "transform_only": 0.04,
+    "exact_answer": 0.09,
+    "writes_tests": 0.02
+   },
+   "expected": "debugging",
+   "jev_direct": "debugging",
+   "jev_direct_confidence": 0.99
+  },
+  {
+   "id": "C5",
+   "request": "Rewrite the README installation section to be clearer.",
+   "factors": {
+    "touches_code": 0.14,
+    "frontend": 0.03,
+    "fix_existing": 0.32,
+    "judges_existing": 0.07,
+    "design_only": 0.18,
+    "many_steps": 0.22,
+    "transform_only": 0.15,
+    "exact_answer": 0.02,
+    "writes_tests": 0.01
+   },
+   "expected": "writing",
+   "jev_direct": "writing",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "C6",
+   "request": "Set up a new Go module, add a Makefile, CI workflow and a hello-world main.",
+   "factors": {
+    "touches_code": 0.97,
+    "frontend": 0.02,
+    "fix_existing": 0.02,
+    "judges_existing": 0.02,
+    "design_only": 0.09,
+    "many_steps": 0.95,
+    "transform_only": 0.02,
+    "exact_answer": 0.03,
+    "writes_tests": 0.04
+   },
+   "expected": "agentic-terminal",
+   "jev_direct": "agentic-terminal",
+   "jev_direct_confidence": 0.98
+  },
+  {
+   "id": "C7",
+   "request": "Run the test suite and tell me what fails.",
+   "factors": {
+    "touches_code": 0.06,
+    "frontend": 0.03,
+    "fix_existing": 0.39,
+    "judges_existing": 0.94,
+    "design_only": 0.05,
+    "many_steps": 0.76,
+    "transform_only": 0.04,
+    "exact_answer": 0.22,
+    "writes_tests": 0.03
+   },
+   "expected": "review",
+   "jev_direct": "agentic-terminal",
+   "jev_direct_confidence": 0.43
+  },
+  {
+   "id": "C8",
+   "request": "Propose a caching strategy for our product catalog API.",
+   "factors": {
+    "touches_code": 0.09,
+    "frontend": 0.02,
+    "fix_existing": 0.04,
+    "judges_existing": 0.02,
+    "design_only": 0.94,
+    "many_steps": 0.1,
+    "transform_only": 0.03,
+    "exact_answer": 0.03,
+    "writes_tests": 0.01
+   },
+   "expected": "spec-design",
+   "jev_direct": "spec-design",
+   "jev_direct_confidence": 0.89
+  },
+  {
+   "id": "C9",
+   "request": "Add a dark mode toggle to the settings page.",
+   "factors": {
+    "touches_code": 0.96,
+    "frontend": 0.86,
+    "fix_existing": 0.03,
+    "judges_existing": 0.02,
+    "design_only": 0.11,
+    "many_steps": 0.38,
+    "transform_only": 0.02,
+    "exact_answer": 0.01,
+    "writes_tests": 0.02
+   },
+   "expected": "webdev",
+   "jev_direct": "webdev",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "C10",
+   "request": "Reduce the Docker image size below 100 MB.",
+   "factors": {
+    "touches_code": 0.83,
+    "frontend": 0.02,
+    "fix_existing": 0.16,
+    "judges_existing": 0.07,
+    "design_only": 0.25,
+    "many_steps": 0.76,
+    "transform_only": 0.03,
+    "exact_answer": 0.82,
+    "writes_tests": 0.01
+   },
+   "expected": "agentic-terminal",
+   "jev_direct": "agentic-terminal",
+   "jev_direct_confidence": 0.72
+  },
+  {
+   "id": "C11",
+   "request": "Given these 200 support tickets, tag each one as billing, bug or feature.",
+   "factors": {
+    "touches_code": 0.09,
+    "frontend": 0.02,
+    "fix_existing": 0.04,
+    "judges_existing": 0.03,
+    "design_only": 0.09,
+    "many_steps": 0.45,
+    "transform_only": 0.96,
+    "exact_answer": 0.17,
+    "writes_tests": 0.01
+   },
+   "expected": "extraction",
+   "jev_direct": "extraction",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "C12",
+   "request": "How many requests per second can this endpoint handle given the numbers in the load test report?",
+   "factors": {
+    "touches_code": 0.02,
+    "frontend": 0.02,
+    "fix_existing": 0.06,
+    "judges_existing": 0.13,
+    "design_only": 0.19,
+    "many_steps": 0.4,
+    "transform_only": 0.59,
+    "exact_answer": 0.94,
+    "writes_tests": 0.01
+   },
+   "expected": "math-data",
+   "jev_direct": "math-data",
+   "jev_direct_confidence": 0.92
+  },
+  {
+   "id": "C13",
+   "request": "Audit our IAM policies for privilege escalation paths.",
+   "factors": {
+    "touches_code": 0.12,
+    "frontend": 0.02,
+    "fix_existing": 0.18,
+    "judges_existing": 0.67,
+    "design_only": 0.57,
+    "many_steps": 0.66,
+    "transform_only": 0.06,
+    "exact_answer": 0.08,
+    "writes_tests": 0.01
+   },
+   "expected": "review",
+   "jev_direct": "review",
+   "jev_direct_confidence": 0.99
+  },
+  {
+   "id": "C14",
+   "request": "This migration deadlocks in production; rewrite it to run online.",
+   "factors": {
+    "touches_code": 0.98,
+    "frontend": 0.03,
+    "fix_existing": 0.96,
+    "judges_existing": 0.22,
+    "design_only": 0.26,
+    "many_steps": 0.54,
+    "transform_only": 0.03,
+    "exact_answer": 0.02,
+    "writes_tests": 0.02
+   },
+   "expected": "debugging",
+   "jev_direct": "debugging",
+   "jev_direct_confidence": 0.78
+  },
+  {
+   "id": "C15",
+   "request": "Draft the API spec (OpenAPI) for the new invoices service.",
+   "factors": {
+    "touches_code": 0.56,
+    "frontend": 0.02,
+    "fix_existing": 0.03,
+    "judges_existing": 0.02,
+    "design_only": 0.96,
+    "many_steps": 0.31,
+    "transform_only": 0.04,
+    "exact_answer": 0.02,
+    "writes_tests": 0.01
+   },
+   "expected": "spec-design",
+   "jev_direct": "spec-design",
+   "jev_direct_confidence": 0.71
+  },
+  {
+   "id": "C16",
+   "request": "Implement pagination on GET /users and add tests.",
+   "factors": {
+    "touches_code": 0.99,
+    "frontend": 0.04,
+    "fix_existing": 0.06,
+    "judges_existing": 0.26,
+    "design_only": 0.05,
+    "many_steps": 0.61,
+    "transform_only": 0.02,
+    "exact_answer": 0.06,
+    "writes_tests": 0.99
+   },
+   "expected": "agentic-terminal",
+   "jev_direct": "backend",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "D1",
+   "request": "Compute the median of these response times: 120, 80, 95, 300, 110.",
+   "factors": {
+    "touches_code": 0.05,
+    "frontend": 0.01,
+    "fix_existing": 0.02,
+    "judges_existing": 0.01,
+    "design_only": 0.04,
+    "many_steps": 0.05,
+    "transform_only": 0.42,
+    "exact_answer": 0.99,
+    "writes_tests": 0.01
+   },
+   "expected": "math-data",
+   "jev_direct": "math-data",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "D2",
+   "request": "Check whether this function handles nil correctly; don't change anything.",
+   "factors": {
+    "touches_code": 0.06,
+    "frontend": 0.03,
+    "fix_existing": 0.27,
+    "judges_existing": 0.95,
+    "design_only": 0.13,
+    "many_steps": 0.17,
+    "transform_only": 0.45,
+    "exact_answer": 0.06,
+    "writes_tests": 0.04
+   },
+   "expected": "review",
+   "jev_direct": "review",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "D3",
+   "request": "Write tests for the new pagination code.",
+   "factors": {
+    "touches_code": 0.97,
+    "frontend": 0.04,
+    "fix_existing": 0.05,
+    "judges_existing": 0.79,
+    "design_only": 0.06,
+    "many_steps": 0.47,
+    "transform_only": 0.03,
+    "exact_answer": 0.03,
+    "writes_tests": 0.99
+   },
+   "expected": "review",
+   "jev_direct": "review",
+   "jev_direct_confidence": 0.79
+  },
+  {
+   "id": "D4",
+   "request": "Why does the build fail on ARM?",
+   "factors": {
+    "touches_code": 0.03,
+    "frontend": 0.04,
+    "fix_existing": 0.95,
+    "judges_existing": 0.19,
+    "design_only": 0.2,
+    "many_steps": 0.5,
+    "transform_only": 0.04,
+    "exact_answer": 0.03,
+    "writes_tests": 0.01
+   },
+   "expected": "debugging",
+   "jev_direct": "debugging",
+   "jev_direct_confidence": 1
+  },
+  {
+   "id": "D5",
+   "request": "Roll out the new config to all three environments and verify the health checks.",
+   "factors": {
+    "touches_code": 0.32,
+    "frontend": 0.04,
+    "fix_existing": 0.06,
+    "judges_existing": 0.3,
+    "design_only": 0.33,
+    "many_steps": 0.85,
+    "transform_only": 0.03,
+    "exact_answer": 0.08,
+    "writes_tests": 0.03
+   },
+   "expected": "agentic-terminal",
+   "jev_direct": "agentic-terminal",
+   "jev_direct_confidence": 0.99
+  }
+ ],
+ "difficulty": [
+  {
+   "id": "T1",
+   "request": "What is 12*7? Number only.",
+   "effort_p": {
+    "0": 1.0,
+    "1": 0.0,
+    "2": 0.0,
+    "3": 0.0,
+    "4": 0.0
+   },
+   "effort_mean": 0,
+   "expected": "trivial",
+   "operator_label": "trivial",
+   "jev_direct": "trivial"
+  },
+  {
+   "id": "T2",
+   "request": "Write a commit message for these changes.",
+   "effort_p": {
+    "0": 0.87,
+    "1": 0.1,
+    "2": 0.01,
+    "3": 0.0,
+    "4": 0.02
+   },
+   "effort_mean": 0.2,
+   "expected": "trivial",
+   "operator_label": "trivial",
+   "jev_direct": "routine"
+  },
+  {
+   "id": "T3",
+   "request": "Rename variable foo to bar in this file.",
+   "effort_p": {
+    "0": 0.97,
+    "1": 0.03,
+    "2": 0.0,
+    "3": 0.0,
+    "4": 0.0
+   },
+   "effort_mean": 0.03,
+   "expected": "trivial",
+   "operator_label": "trivial",
+   "jev_direct": "trivial"
+  },
+  {
+   "id": "T4",
+   "request": "Convert this JSON to YAML.",
+   "effort_p": {
+    "0": 0.98,
+    "1": 0.01,
+    "2": 0.0,
+    "3": 0.0,
+    "4": 0.01
+   },
+   "effort_mean": 0.04,
+   "expected": "trivial",
+   "operator_label": "trivial",
+   "jev_direct": "trivial"
+  },
+  {
+   "id": "T5",
+   "request": "What does `git rebase -i` do?",
+   "effort_p": {
+    "0": 1.0,
+    "1": 0.0,
+    "2": 0.0,
+    "3": 0.0,
+    "4": 0.0
+   },
+   "effort_mean": 0,
+   "expected": "trivial",
+   "operator_label": "trivial",
+   "jev_direct": "trivial"
+  },
+  {
+   "id": "R1",
+   "request": "Add a Stripe webhook handler with signature verification and idempotency.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.38,
+    "2": 0.61,
+    "3": 0.01,
+    "4": 0.0
+   },
+   "effort_mean": 1.62,
+   "expected": "routine",
+   "operator_label": "routine",
+   "jev_direct": "routine"
+  },
+  {
+   "id": "R2",
+   "request": "Implement pagination on GET /users and add tests.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.22,
+    "2": 0.77,
+    "3": 0.01,
+    "4": 0.0
+   },
+   "effort_mean": 1.79,
+   "expected": "routine",
+   "operator_label": "routine",
+   "jev_direct": "routine"
+  },
+  {
+   "id": "R3",
+   "request": "Add a dark mode toggle to the settings page.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.45,
+    "2": 0.55,
+    "3": 0.0,
+    "4": 0.0
+   },
+   "effort_mean": 1.55,
+   "expected": "routine",
+   "operator_label": "routine",
+   "jev_direct": "routine"
+  },
+  {
+   "id": "R4",
+   "request": "Write unit tests for the parser in internal/table.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.45,
+    "2": 0.53,
+    "3": 0.01,
+    "4": 0.01
+   },
+   "effort_mean": 1.57,
+   "expected": "routine",
+   "operator_label": "routine",
+   "jev_direct": "routine"
+  },
+  {
+   "id": "R5",
+   "request": "Set up a new Go module with a Makefile and CI workflow.",
+   "effort_p": {
+    "0": 0.01,
+    "1": 0.45,
+    "2": 0.54,
+    "3": 0.0,
+    "4": 0.0
+   },
+   "effort_mean": 1.53,
+   "expected": "routine",
+   "operator_label": "routine",
+   "jev_direct": "routine"
+  },
+  {
+   "id": "R6",
+   "request": "Extract all email addresses from this log and output JSON.",
+   "effort_p": {
+    "0": 0.84,
+    "1": 0.16,
+    "2": 0.0,
+    "3": 0.0,
+    "4": 0.0
+   },
+   "effort_mean": 0.18,
+   "expected": "trivial",
+   "operator_label": "routine",
+   "jev_direct": "routine"
+  },
+  {
+   "id": "H1",
+   "request": "Design a zero-downtime migration plan to move a 40-table Postgres schema to RLS multi-tenancy; list risks and rollback.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.0,
+    "2": 0.05,
+    "3": 0.95,
+    "4": 0.0
+   },
+   "effort_mean": 2.96,
+   "expected": "hard",
+   "operator_label": "hard",
+   "jev_direct": "hard"
+  },
+  {
+   "id": "H2",
+   "request": "Users report intermittent 500s after the last deploy; find the root cause across the API, the worker and the DB.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.0,
+    "2": 0.3,
+    "3": 0.47,
+    "4": 0.23
+   },
+   "effort_mean": 2.93,
+   "expected": "hard",
+   "operator_label": "hard",
+   "jev_direct": "hard"
+  },
+  {
+   "id": "H3",
+   "request": "This migration deadlocks in production under load; rewrite it to run online without blocking writes.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.01,
+    "2": 0.17,
+    "3": 0.64,
+    "4": 0.18
+   },
+   "effort_mean": 2.99,
+   "expected": "hard",
+   "operator_label": "hard",
+   "jev_direct": "hard"
+  },
+  {
+   "id": "H4",
+   "request": "Audit our IAM policies for privilege escalation paths.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.01,
+    "2": 0.31,
+    "3": 0.56,
+    "4": 0.12
+   },
+   "effort_mean": 2.79,
+   "expected": "hard",
+   "operator_label": "hard",
+   "jev_direct": "hard"
+  },
+  {
+   "id": "H5",
+   "request": "Refactor the checkout flow so the cart page loads under 200 ms without changing behaviour.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.01,
+    "2": 0.38,
+    "3": 0.53,
+    "4": 0.08
+   },
+   "effort_mean": 2.69,
+   "expected": "hard",
+   "operator_label": "hard",
+   "jev_direct": "hard"
+  },
+  {
+   "id": "H6",
+   "request": "Migrate the monorepo from npm to pnpm, update CI, and make all 1,200 tests pass.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.0,
+    "2": 0.01,
+    "3": 0.98,
+    "4": 0.01
+   },
+   "effort_mean": 3,
+   "expected": "hard",
+   "operator_label": "hard",
+   "jev_direct": "hard"
+  },
+  {
+   "id": "X1",
+   "request": "Design a consensus protocol for our edge nodes that tolerates partitions and clock drift, and prove its safety properties.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.0,
+    "2": 0.0,
+    "3": 0.73,
+    "4": 0.27
+   },
+   "effort_mean": 3.26,
+   "expected": "extreme",
+   "operator_label": "extreme",
+   "jev_direct": "extreme"
+  },
+  {
+   "id": "X2",
+   "request": "Our recommendation model's offline metrics improved but online CTR dropped; figure out why and propose a fix.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.0,
+    "2": 0.12,
+    "3": 0.33,
+    "4": 0.55
+   },
+   "effort_mean": 3.42,
+   "expected": "extreme",
+   "operator_label": "extreme",
+   "jev_direct": "routine"
+  },
+  {
+   "id": "X3",
+   "request": "Port the whole 300k-line C++ engine to Rust preserving ABI compatibility.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.0,
+    "2": 0.0,
+    "3": 0.5,
+    "4": 0.5
+   },
+   "effort_mean": 3.49,
+   "expected": "extreme",
+   "operator_label": "extreme",
+   "jev_direct": "extreme"
+  },
+  {
+   "id": "X4",
+   "request": "We keep getting paged for something nobody can reproduce; investigate.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.0,
+    "2": 0.01,
+    "3": 0.02,
+    "4": 0.97
+   },
+   "effort_mean": 3.96,
+   "expected": "extreme",
+   "operator_label": "extreme",
+   "jev_direct": "hard"
+  },
+  {
+   "id": "RLS-JOURNAL",
+   "request": "Design a zero-downtime migration plan to move a 40-table Postgres schema to RLS multi-tenancy; list risks and rollback.",
+   "effort_p": {
+    "0": 0.0,
+    "1": 0.03,
+    "2": 0.49,
+    "3": 0.48,
+    "4": 0.0
+   },
+   "effort_mean": 2.45,
+   "expected": "hard",
+   "confidence": 0.97,
+   "operator_label": "hard",
+   "jev_direct": "hard"
+  }
+ ]
+}

@@ -70,7 +70,7 @@ cpa-plugin-auto-router/
 **Interfaces:**
 - Produces: confirmed facts that Tasks 6–9 rely on; if any check fails, stop and report — do not proceed to Task 6.
 
-- [ ] **Step 1: Build the official example against the local checkout and load it in the running proxy**
+- [x] **Step 1: Build the official example against the local checkout and load it in the running proxy**
 
 ```bash
 cd /home/hermes/projects/CLIProxyAPI/examples/plugin/claude-web-search-router/go
@@ -89,7 +89,7 @@ Then: `XDG_RUNTIME_DIR=/run/user/1000 systemctl --user restart cliproxyapi-test 
 
 Expected: a line showing the plugin loaded (id `claude-web-search-router`, abi 1, schema 6) and no `abi mismatch` / `schema` error. Record the exact lines in the checks file.
 
-- [ ] **Step 2: Confirm the thinking suffix through the normal path is clamped, not rejected**
+- [x] **Step 2: Confirm the thinking suffix through the normal path is clamped, not rejected**
 
 ```bash
 KEY=$(cat /home/hermes/cliproxyapi-test/api-key)
@@ -99,7 +99,7 @@ curl -s http://127.0.0.1:8318/v1/chat/completions -H "Authorization: Bearer $KEY
 
 Expected: HTTP 200 with a completion (Kimi has no `max`; the host clamps to `high`). A 400 mentioning thinking means the suffix path is strict — record it; the plugin would then send `high` for models whose `levels` (models.dev) lack the requested level (small change in Task 4, `Thinking()`).
 
-- [ ] **Step 3: Record which session signal OMP and Hermes send**
+- [x] **Step 3: Record which session signal OMP and Hermes send**
 
 ```bash
 grep -n -i "prompt_cache_key\|x-session\|session-id\|X-Session-Affinity" /home/hermes/.hermes/hermes-agent/agent/auxiliary_client.py | head
@@ -108,11 +108,11 @@ grep -rn -i "prompt_cache_key\|x-session-id\|x-session-affinity" /home/hermes/pr
 
 Expected: at least one of `prompt_cache_key` (Responses) or `X-Session-ID`/`X-Session-Affinity` per client. Record which. If neither, the plugin falls back to the first-user-message hash (Task 5) — acceptable, note it.
 
-- [ ] **Step 4: Confirm host.model.execute_stream preserves Responses SSE and that executor headers are filtered**
+- [x] **Step 4: Confirm host.model.execute_stream preserves Responses SSE and that executor headers are filtered**
 
 Read `sdk/api/handlers/handlers_execution.go:223-226` and `handlers_interceptors.go:289-294` in the checkout: `downstreamHeadersFromExecutor(raw, PassthroughHeadersEnabled(cfg))` returns `nil` when passthrough is off. Record: "X-Auto-Router reaches the client only if `passthrough-headers: true`; default off; log line is authoritative." The SSE passthrough itself is exercised end-to-end in Task 9 (smoke); no separate check.
 
-- [ ] **Step 5: Revert the example plugin, commit the checks file**
+- [x] **Step 5: Revert the example plugin, commit the checks file**
 
 ```bash
 rm /home/hermes/cliproxyapi-test/plugins/claude-web-search-router.so
@@ -131,7 +131,7 @@ cd /home/hermes/projects/cpa-plugin-auto-router && git add docs/superpowers/plan
 **Interfaces:**
 - Produces: module path `github.com/chloeassistant/cpa-plugin-auto-router`; `make build` → `bin/auto-router.so`; `make test`; `make install` copies to `/home/hermes/cliproxyapi/plugins/auto-router.so`.
 
-- [ ] **Step 1: go.mod with local replace**
+- [x] **Step 1: go.mod with local replace**
 
 ```
 module github.com/chloeassistant/cpa-plugin-auto-router
@@ -149,7 +149,7 @@ replace github.com/router-for-me/CLIProxyAPI/v7 => /home/hermes/projects/CLIProx
 
 Run `go mod tidy` (needs a `.go` file; create `doc.go` with `package main` and a one-line comment first).
 
-- [ ] **Step 2: Makefile**
+- [x] **Step 2: Makefile**
 
 ```make
 BIN_DIR := $(CURDIR)/bin
@@ -176,7 +176,7 @@ clean:
 	rm -rf $(BIN_DIR)
 ```
 
-- [ ] **Step 3: tiers.yaml (operator-owned; the updater never writes it)**
+- [x] **Step 3: tiers.yaml (operator-owned; the updater never writes it)**
 
 ```yaml
 # Tier per catalog model id (exact id from GET /v1/models). Models in the
@@ -188,7 +188,7 @@ top:   [gpt-6-astra, gpt-6-sol, gpt-5.6-sol, claude-opus-5, claude-opus-5-5,
         claude-fable-5, claude-fable-5-1]
 ```
 
-- [ ] **Step 4: .gitignore and commit**
+- [x] **Step 4: .gitignore and commit**
 
 ```
 bin/
@@ -240,7 +240,7 @@ func (w *Watched) Get() *Table                   // stat; reload on mtime change
 
 Validation rules (each is a test): unknown tier → error; score with empty `Date` or `Margin < 0` → error; score referencing a benchmark not in `Benchmarks` → error; effort outside the allowed set → error; `Models` empty → error.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```go
 package table
@@ -278,9 +278,9 @@ func TestWatchKeepsOldOnBadReload(t *testing.T) {
 
 `testdata/good.yaml` is the spec's example table verbatim (section "Formato da tabela"). Each `bad-*.yaml` is `good.yaml` with one field broken (tier `ultra`; date removed; score under `nonexistent-bench`; effort `insane`; `models: {}`).
 
-- [ ] **Step 2: Run, expect compile failure** — `go test ./internal/table/` → `undefined: Load`.
+- [x] **Step 2: Run, expect compile failure** — `go test ./internal/table/` → `undefined: Load`.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 package table
@@ -343,9 +343,9 @@ func (w *Watched) Get() *Table {
 }
 ```
 
-- [ ] **Step 4: Run tests, expect PASS** — `go test ./internal/table/ -v`.
+- [x] **Step 4: Run tests, expect PASS** — `go test ./internal/table/ -v`.
 
-- [ ] **Step 5: Commit** — `git add internal/table && git commit -m "feat(table): models.yaml loader with validation and mtime reload"`.
+- [x] **Step 5: Commit** — `git add internal/table && git commit -m "feat(table): models.yaml loader with validation and mtime reload"`.
 
 ---
 
@@ -412,7 +412,7 @@ Score selection per model: among `Scores[bench]`, take the entry whose effort is
 
 Ranking: winner = max Value; tie if `|a-b| <= max(a.Margin, b.Margin)` → lower `Cost.Input+Cost.Output`. Try benchmarks in order until at least one candidate is scored. No scored candidate → `fallback-unscored`: cheapest candidate. No candidate in tier → raise tier (`mid→top`, `flash→mid`), `Reason="tier-raised"`; top empty → error.
 
-- [ ] **Step 1: Write failing tests** (table built in code with a helper `mk(tier string, cost float64, scores map[string][]table.Score)`)
+- [x] **Step 1: Write failing tests** (table built in code with a helper `mk(tier string, cost float64, scores map[string][]table.Score)`)
 
 ```go
 func TestChooseRankedByCategoryBenchmark(t *testing.T) {
@@ -472,9 +472,9 @@ func TestExtractionPicksCheapestFlash(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run, expect compile failure** — `go test ./internal/decide/`.
+- [x] **Step 2: Run, expect compile failure** — `go test ./internal/decide/`.
 
-- [ ] **Step 3: Implement** (`decide.go`; ≈120 lines)
+- [x] **Step 3: Implement** (`decide.go`; ≈120 lines)
 
 ```go
 package decide
@@ -571,9 +571,9 @@ func candidates(in Input, tier string) []string {
 
 Note the tie loop: after sorting by value desc, a cheaper model within margin of the current winner replaces it; this is the spec's "empate → menor custo". `extraction` has an empty list so it goes straight to `generalFallback`; with flash models typically unscored there, it lands on cheapest — matching the spec.
 
-- [ ] **Step 4: Run tests, expect PASS** — `go test ./internal/decide/ -v`.
+- [x] **Step 4: Run tests, expect PASS** — `go test ./internal/decide/ -v`.
 
-- [ ] **Step 5: Commit** — `git commit -am "feat(decide): choose model by category benchmarks, effort-aware, cost tie-break"`.
+- [x] **Step 5: Commit** — `git commit -am "feat(decide): choose model by category benchmarks, effort-aware, cost tie-break"`.
 
 ---
 
@@ -606,7 +606,7 @@ Rules (spec "Sessão e escalada"):
 6. same tier → keep model, thinking = `ThinkingOf(new)`, reason `escalate-thinking`.
 7. higher tier → `Choose` with new difficulty and this turn's category, reason `escalate-tier`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```go
 func TestNextNewThenKeep(t *testing.T) {
@@ -654,9 +654,9 @@ func TestNextFallbackWhenStoredUnavailable(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run, expect failure** (`undefined: Next`).
+- [x] **Step 2: Run, expect failure** (`undefined: Next`).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 ```go
 func Next(in Input, prev State, jevOK bool) (Decision, error) {
@@ -710,9 +710,9 @@ func Next(in Input, prev State, jevOK bool) (Decision, error) {
 
 (`vision-swap` calls `Choose` at the previous difficulty, whose tier equals `prev.Tier`; `Choose` only raises when that tier has no vision candidate — spec-consistent.)
 
-- [ ] **Step 4: Run tests, expect PASS** — `go test ./internal/decide/ -v`.
+- [x] **Step 4: Run tests, expect PASS** — `go test ./internal/decide/ -v`.
 
-- [ ] **Step 5: Commit** — `git commit -am "feat(decide): per-turn escalation rules (only-escalate, vision-swap, fallback, jev-unavailable)"`.
+- [x] **Step 5: Commit** — `git commit -am "feat(decide): per-turn escalation rules (only-escalate, vision-swap, fallback, jev-unavailable)"`.
 
 ---
 
@@ -740,7 +740,7 @@ func (s *Store) Put(id string, st decide.State)        // evicts oldest when len
 func ID(headers http.Header, body []byte) string
 ```
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```go
 func TestIDPrecedence(t *testing.T) {
@@ -764,13 +764,13 @@ func TestStoreTTLAndEvict(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Run, expect failure.**
+- [x] **Step 2: Run, expect failure.**
 
-- [ ] **Step 3: Implement** — `ID` uses `gjson`: headers in order `X-Session-Id`, `X-Session-Affinity`, `X-Client-Request-Id`; then `session_id`, `sessionId`, `prompt_cache_key`, `conversation.id`, `conversation` (string), `metadata.user_id`; else first user text: `messages.#(role=="user").content` (string, or `#.text` joined when array) for chat; `input.#(role=="user").content` same for Responses; `input` as plain string. Hash: `sha256`, hex of first 8 bytes, prefixed `h:`. Store: map + `time.Now()` stamp per entry; eviction is a linear scan for the oldest (`// ponytail: O(n) evict, fine at 65k; heap if it ever shows in a profile`).
+- [x] **Step 3: Implement** — `ID` uses `gjson`: headers in order `X-Session-Id`, `X-Session-Affinity`, `X-Client-Request-Id`; then `session_id`, `sessionId`, `prompt_cache_key`, `conversation.id`, `conversation` (string), `metadata.user_id`; else first user text: `messages.#(role=="user").content` (string, or `#.text` joined when array) for chat; `input.#(role=="user").content` same for Responses; `input` as plain string. Hash: `sha256`, hex of first 8 bytes, prefixed `h:`. Store: map + `time.Now()` stamp per entry; eviction is a linear scan for the oldest (`// ponytail: O(n) evict, fine at 65k; heap if it ever shows in a profile`).
 
-- [ ] **Step 4: Run tests, expect PASS.**
+- [x] **Step 4: Run tests, expect PASS.**
 
-- [ ] **Step 5: Commit** — `git add internal/session && git commit -m "feat(session): TTL state store and host-compatible session id extraction"`.
+- [x] **Step 5: Commit** — `git add internal/session && git commit -m "feat(session): TTL state store and host-compatible session id extraction"`.
 
 ---
 
@@ -817,15 +817,15 @@ Request body sent by `Decide`:
 
 Response parsing: `answers.category.choice` (string), `answers.category.probabilities` (object) or fallback derive from `choice` = 1.0, `answers.category.confidence` (number, default 0). Any HTTP ≠ 200, JSON error, timeout, response > 1 MB → `ErrUnavailable`.
 
-- [ ] **Step 1: Write failing tests** — snippet: chat body with system+user+assistant+user → returns last user text, `Messages=4`, `HasNewUserMessage=true`; Responses body with `input` array and an `input_image` part → `Images=1`; tool-result-only last message → `HasNewUserMessage=false`; tail truncation at `max`. jev: `httptest.Server` returning a canned answer → `Result` fields; server returning 500 → `ErrUnavailable`; `Validate` rejects `http://example.com`, accepts `http://127.0.0.1:9`, rejects `https://u:p@host`.
+- [x] **Step 1: Write failing tests** — snippet: chat body with system+user+assistant+user → returns last user text, `Messages=4`, `HasNewUserMessage=true`; Responses body with `input` array and an `input_image` part → `Images=1`; tool-result-only last message → `HasNewUserMessage=false`; tail truncation at `max`. jev: `httptest.Server` returning a canned answer → `Result` fields; server returning 500 → `ErrUnavailable`; `Validate` rejects `http://example.com`, accepts `http://127.0.0.1:9`, rejects `https://u:p@host`.
 
-- [ ] **Step 2: Run, expect failure.**
+- [x] **Step 2: Run, expect failure.**
 
-- [ ] **Step 3: Implement** — `snippet` with `gjson` (chat: `messages`; Responses: `input`); `jev` with `net/http` + `context.WithTimeout`, `io.LimitReader(resp.Body, 1<<20)`, `Authorization: Bearer`. URL policy port of `hermes/plugins/jev/client.py:_check_url` using `net/netip` prefixes (`10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.0/8, ::1/128, fc00::/7, fe80::/10`).
+- [x] **Step 3: Implement** — `snippet` with `gjson` (chat: `messages`; Responses: `input`); `jev` with `net/http` + `context.WithTimeout`, `io.LimitReader(resp.Body, 1<<20)`, `Authorization: Bearer`. URL policy port of `hermes/plugins/jev/client.py:_check_url` using `net/netip` prefixes (`10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 100.64.0.0/10, 127.0.0.0/8, ::1/128, fc00::/7, fe80::/10`).
 
-- [ ] **Step 4: Run tests, expect PASS.**
+- [x] **Step 4: Run tests, expect PASS.**
 
-- [ ] **Step 5: Commit** — `git add internal/snippet internal/jev && git commit -m "feat: request snippet/signals and Jev typed-decision client"`.
+- [x] **Step 5: Commit** — `git add internal/snippet internal/jev && git commit -m "feat: request snippet/signals and Jev typed-decision client"`.
 
 ---
 
@@ -864,11 +864,11 @@ Registration capabilities: `model_registrar:true, model_router:true, executor:tr
 
 `execute(raw)` / `executeStream(raw)`: unmarshal `rpcExecutorRequest`; look up `d` in `pending` by `Metadata["request_id"]`/session (from `req.Headers` + `req.OriginalRequest`); `model := d.Model + "(" + d.Thinking + ")"`; call `host.model.execute` (non-stream) or the stream-forward loop copied from `examples/.../stream_forward.go:125-180` with `EntryProtocol == ExitProtocol == req.SourceFormat`, `Body: req.OriginalRequest`, `HostCallbackID: req.HostCallbackID`. Response headers: `{"Content-Type": ..., "X-Auto-Router": model+";"+d.Reason}`. If `pending` has no entry (e.g. host restarted mid-flight) → run `routeModel` logic inline once (same function, refactored as `decideFor(headers, body, format) Decision`).
 
-- [ ] **Step 1: Write the one test the shell needs** — `plugin_test.go`: `TestRouteIgnoresOtherModels` (`routeModel` with `RequestedModel:"gpt-6-astra"` → `Handled:false`) and `TestRouteDecidesWithoutJev` (config with `jev_base_url` pointing to a closed port; `RequestedModel:"auto-router"`, chat body → `Handled:true`, `TargetKind:"self"`, `Reason:"jev-unavailable"`, and `pending` holds a model from the seed table). Use `table/models.yaml` from Task 10's seed (write a minimal seed now in `testdata/`).
+- [x] **Step 1: Write the one test the shell needs** — `plugin_test.go`: `TestRouteIgnoresOtherModels` (`routeModel` with `RequestedModel:"gpt-6-astra"` → `Handled:false`) and `TestRouteDecidesWithoutJev` (config with `jev_base_url` pointing to a closed port; `RequestedModel:"auto-router"`, chat body → `Handled:true`, `TargetKind:"self"`, `Reason:"jev-unavailable"`, and `pending` holds a model from the seed table). Use `table/models.yaml` from Task 10's seed (write a minimal seed now in `testdata/`).
 
-- [ ] **Step 2: Run, expect failure.**
+- [x] **Step 2: Run, expect failure.**
 
-- [ ] **Step 3: Implement** `host.go` (envelope types, `callHost`, `hostLog`, `hostModelExecute`, `hostModelStreamForward`, `emitPluginStreamChunk`, `closePluginStream` — all copied from the example, renamed to drop the Claude-specific parts) and `plugin.go` as specified. `configure` parses `config_yaml` into:
+- [x] **Step 3: Implement** `host.go` (envelope types, `callHost`, `hostLog`, `hostModelExecute`, `hostModelStreamForward`, `emitPluginStreamChunk`, `closePluginStream` — all copied from the example, renamed to drop the Claude-specific parts) and `plugin.go` as specified. `configure` parses `config_yaml` into:
 
 ```go
 type pluginConfig struct {
@@ -886,9 +886,9 @@ type pluginConfig struct {
 
 with defaults applied when zero, `table.Watch(TablePath)` opened on configure (error → plugin registers but `routeModel` returns `Handled:false` and logs once).
 
-- [ ] **Step 4: Build and test** — `make build && go test ./...`. Expected: `bin/auto-router.so` exists; tests pass.
+- [x] **Step 4: Build and test** — `make build && go test ./...`. Expected: `bin/auto-router.so` exists; tests pass.
 
-- [ ] **Step 5: Commit** — `git add main.go host.go plugin.go plugin_test.go testdata && git commit -m "feat(plugin): register auto-router, route via Jev+table, execute through host.model.*"`.
+- [x] **Step 5: Commit** — `git add main.go host.go plugin.go plugin_test.go testdata && git commit -m "feat(plugin): register auto-router, route via Jev+table, execute through host.model.*"`.
 
 ---
 
@@ -912,7 +912,7 @@ Source readers (all take a `fetch(url) -> bytes` so tests inject fixtures):
 
 `merge.merge(old: Table|None, rows, catalog_ids, tiers, caps)`: start from old table's scores for ids still in catalog; for each row keep it if no existing `(model, bench, effort)` or `row.date >= existing.date`; drop rows for ids not in `catalog ∩ tiers`; WARN each catalog id without tier; result `benchmarks` = union of declared ids in `aliases.BENCHMARKS` (id → `{source, unit}`); `validate()` = same rules as the Go loader; `write_atomic(path)`.
 
-- [ ] **Step 1: Write failing tests** (fixture-driven; fixtures are small hand-trimmed copies of the real payloads captured on 2026-09-24 — cut to ≤ 3 models each)
+- [x] **Step 1: Write failing tests** (fixture-driven; fixtures are small hand-trimmed copies of the real payloads captured on 2026-09-24 — cut to ≤ 3 models each)
 
 ```python
 def test_eee_keeps_newest_snapshot(fx):
@@ -956,13 +956,13 @@ def test_validate_rejects_missing_date(tmp_path):
 
 `fx` is a fixture returning `fetch(url)` that serves `testdata/` by URL substring (`"EEE_datastore/tree" → listing json`, `"resolve/main" → snapshot`, `"openrouter.ai" → openrouter.json`, `"epoch.ai" → zip built on the fly from epoch_deepswe.csv`, `"leaderboard-dataset" → parquet`).
 
-- [ ] **Step 2: Run, expect failure** — `cd updater && uv run --with pyyaml --with pyarrow --with pytest --python 3.12 python -m pytest -q`.
+- [x] **Step 2: Run, expect failure** — `cd updater && uv run --with pyyaml --with pyarrow --with pytest --python 3.12 python -m pytest -q`.
 
-- [ ] **Step 3: Implement** `sources.py`, `aliases.py` (explicit dicts; **every** catalog id from Task 1's `tiers.yaml` must have an entry per source or an explicit `None`), `merge.py`, `__main__.py` (argparse; `fetch` = `urllib.request` with UA `cpa-auto-router-updater/0.1`, 60 s timeout, retry ×3 with backoff on 429/5xx; per-source `try/except` → `WARN source failed: <err>`; end summary line `updated=N kept=M dropped=K unmapped=U untiered=[...]`).
+- [x] **Step 3: Implement** `sources.py`, `aliases.py` (explicit dicts; **every** catalog id from Task 1's `tiers.yaml` must have an entry per source or an explicit `None`), `merge.py`, `__main__.py` (argparse; `fetch` = `urllib.request` with UA `cpa-auto-router-updater/0.1`, 60 s timeout, retry ×3 with backoff on 429/5xx; per-source `try/except` → `WARN source failed: <err>`; end summary line `updated=N kept=M dropped=K unmapped=U untiered=[...]`).
 
-- [ ] **Step 4: Run tests, expect PASS.**
+- [x] **Step 4: Run tests, expect PASS** — `cd updater && uv run --with pyyaml --with pyarrow --with pytest --python 3.12 python -m pytest -q`.
 
-- [ ] **Step 5: Commit** — `git add updater && git commit -m "feat(updater): EEE/OpenRouter/Epoch/Arena/models.dev readers, merge rules, atomic write"`.
+- [x] **Step 5: Commit** — `git add updater && git commit -m "feat(updater): EEE/OpenRouter/Epoch/Arena/models.dev readers, merge rules, atomic write"`.
 
 ---
 
@@ -971,7 +971,7 @@ def test_validate_rejects_missing_date(tmp_path):
 **Files:**
 - Create: `table/models.yaml` (generated), `systemd/cpa-auto-router-update.service`, `systemd/cpa-auto-router-update.timer`, `README.md`
 
-- [ ] **Step 1: Generate the seed table against the live proxy**
+- [x] **Step 1: Generate the seed table against the live proxy**
 
 ```bash
 cd /home/hermes/projects/cpa-plugin-auto-router
@@ -984,7 +984,7 @@ uv run --with pyyaml --with pyarrow --python 3.12 python -m updater \
 
 Expected: exit 0; summary line; `table/models.yaml` has every tiered model; `journal`-style WARN lines list untiered catalog ids (`abliterated-*`, `gpt-image-*`, `codex-auto-review`, old Claude ids — expected). Then `go test ./internal/table/ -run TestLoadGood` after pointing a copy of the test at the generated file: `cp table/models.yaml internal/table/testdata/generated.yaml` and add `TestLoadGenerated` (Load must succeed).
 
-- [ ] **Step 2: Install plugin + table into the TEST instance**
+- [x] **Step 2: Install plugin + table into the TEST instance**
 
 ```bash
 make install-test            # copies bin/auto-router.so to /home/hermes/cliproxyapi-test/plugins/
@@ -1006,7 +1006,7 @@ Edit `/home/hermes/cliproxyapi-test/config.yaml` `plugins.configs`:
 
 Expected in journal: plugin `auto-router` loaded; `GET http://127.0.0.1:8318/v1/models` lists `auto-router`.
 
-- [ ] **Step 3: Smoke — trivial and hard, chat and Responses**
+- [x] **Step 3: Smoke — trivial and hard, chat and Responses**
 
 ```bash
 KEY=$(cat /home/hermes/cliproxyapi-test/api-key)
@@ -1021,7 +1021,7 @@ Expected: first → 200 with an answer, log line `difficulty=trivial tier=flash 
 
 Then send a **second** trivial turn with the same `prompt_cache_key` as the hard one → log `reason=keep`, same model (only-escalate).
 
-- [ ] **Step 4: systemd timer**
+- [x] **Step 4: systemd timer**
 
 `systemd/cpa-auto-router-update.service`:
 
@@ -1057,7 +1057,7 @@ systemctl --user start cpa-auto-router-update.service && journalctl --user -u cp
 
 Expected: run completes exit 0, summary line, `models.yaml` mtime updated, plugin log shows table reload on next decision (no restart).
 
-- [ ] **Step 5: README + commit + push**
+- [x] **Step 5: README + commit + push**
 
 README must state: everything above ran against the TEST instance (8318). Production rollout is Task 10 and is done by the operator.
 
@@ -1081,7 +1081,7 @@ git push -u origin main   # remote already exists: git@github.com:chloeassistant
 
 The worker writes the runbook; **the operator runs it**. Production is `cliproxyapi.service` on 8317 — the proxy the orchestrator itself is using. No restart is needed: the proxy hot-reloads `config.yaml` (`sdk/cliproxy/service_config.go:171` → `pluginHost.ApplyConfig`) and picks up new files in `plugins/`.
 
-- [ ] **Step 1: Write `docs/runbook-production.md`** with exactly these steps (commands verbatim):
+- [x] **Step 1: Write `docs/runbook-production.md`** with exactly these steps (commands verbatim):
 
 ```bash
 # 1. Binary and table (no restart; the host loads the .so on the next config apply)
@@ -1110,7 +1110,7 @@ curl -s -H "Authorization: Bearer $KEY" http://127.0.0.1:8317/v1/models | grep -
 # Rollback: set auto-router.enabled: false in config.yaml (hot-reload) — no restart.
 ```
 
-- [ ] **Step 2: Commit** — `git add docs/runbook-production.md && git commit -m "docs: production rollout runbook (operator-gated)"`.
+- [x] **Step 2: Commit** — `git add docs/runbook-production.md && git commit -m "docs: production rollout runbook (operator-gated)"`.
 
 ## Self-review
 

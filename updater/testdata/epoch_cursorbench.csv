@@ -1,0 +1,3 @@
+Model version,Score,Reasoning level,Cost per task,Tokens per task,Steps per task,Release date,Organization,Country,Training compute (FLOP),Training compute notes,Name,Rank,Source,Notes
+claude-fable-5-1_max,0.518,Max,17.28,117236,128,2026-09-01,Anthropic,United States of America,,,Fable 5.1 Max,1,https://cursor.com/cursorbench,
+claude-opus-5_max,0.466,Max,11.95,85384,106,2026-07-24,Anthropic,United States of America,,,Opus 5 Max,5,https://cursor.com/cursorbench,

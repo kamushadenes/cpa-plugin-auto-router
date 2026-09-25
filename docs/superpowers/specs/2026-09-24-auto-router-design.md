@@ -80,23 +80,52 @@ Estado enviado (`state`):
 }
 ```
 
-Perguntas (`questions`), todas na mesma chamada:
+Uma chamada envia o mesmo `state` e dez perguntas: nove `noul` e um `score`.
+Os fatores são `touches_code`, `frontend`, `fix_existing`, `judges_existing`,
+`design_only`, `many_steps`, `transform_only`, `exact_answer` e `writes_tests`.
+As instruções calibradas estão em `internal/jev/client.go`; a composição pura
+em `internal/decide/compose.go` é a fonte de verdade.
 
-| nome | tipo | opções |
-|---|---|---|
-| `category` | choice | `webdev`, `backend`, `agentic-terminal`, `debugging`, `review`, `spec-design`, `writing`, `extraction`, `math-data` |
-| `difficulty` | choice | `trivial`, `routine`, `hard`, `extreme` |
+Categoria: a primeira regra válida vence, com `T = 0,6` e `top` como o fator
+de maior probabilidade (empates seguem a ordem dos fatores acima):
 
-As probabilidades por opção que o `choice` devolve são gravadas no log; a v1
-usa argmax. Mistura ponderada de benchmarks (60 % webdev / 40 % backend) fica
-como upgrade se o argmax se mostrar instável em categorias vizinhas.
+1. `extraction`: `transform_only >= T` e `top == transform_only`.
+2. `math-data`: `exact_answer >= 0,5` e `touches_code < T`.
+3. `spec-design`: `design_only >= T` e `design_only >= judges_existing`.
+4. `debugging`: `fix_existing >= T` e `fix_existing >= judges_existing`.
+5. `review`: `judges_existing >= T` e `judges_existing >= many_steps`.
+6. `review`: `writes_tests >= T`, `many_steps < T` e `writes_tests > touches_code`.
+7. `webdev`: `touches_code >= T` e `frontend >= T`.
+8. `agentic-terminal`: `many_steps >= T`, mesmo sem código.
+9. `backend`: `touches_code >= T`.
+10. `review`: `judges_existing >= T`; senão, `writing`.
 
-Confiança (`answers.<q>.confidence`) abaixo de **0,6**:
+`effort` pergunta quanto esforço um engenheiro sênior precisaria: um minuto,
+menos de uma hora, algumas horas, um dia ou mais, ou investigação em aberto.
+`criteria` é um array ordenado de cinco níveis. Com `E = Σ i·p_i`, os cortes
+são `trivial` para `E < 0,5`, `routine` para `E < 2`, `hard` para `E < 3,1`
+e `extreme` nos demais casos. Sem `probabilities`, um `score` inteiro de 0 a 4
+gera uma distribuição com probabilidade 1 nesse nível.
 
-- `difficulty` incerta → `routine` em sessão nova; em sessão existente mantém
-  o gravado. Dúvida nunca escala.
-- `category` incerta → ranking geral (AA Intelligence), sem benchmark de
-  categoria.
+Depois dos cortes, uma massa de pelo menos `0,35` no próximo nível provoca
+uma única escalada: `p1` leva `trivial` a `routine`, `p3` leva `routine` a
+`hard`, e `p4` leva `hard` a `extreme`. A regra usa o rótulo original da
+média e não repete a escalada.
+
+A confiança de categoria usa o mínimo dos fatores que sustentam a regra
+vencedora; condições negativas usam `1-p`. Comparações entre fatores definem
+prioridade. Para `writing`, a confiança é `1-max(fatores)`. A confiança de
+dificuldade usa `p0` para `trivial`, `p1+p2` para `routine`, `p2+p3` para
+`hard` e `p4` para `extreme`. Se `extreme` veio da escalada, soma também
+`p3`. O caso RLS com `{1:0,03, 2:0,49, 3:0,48}` permanece `hard`, com
+confiança `0,97`. Os testes preservam os 39 casos de categoria e 21 de
+dificuldade originais, acrescentam esse caso do journal e cobrem as três
+escaladas, sem chamadas de rede.
+
+Abaixo de `confidence_threshold` (padrão 0,6), categoria usa ranking geral;
+dificuldade usa `routine` em sessão nova ou mantém a dificuldade da sessão.
+O log preserva os rótulos compostos antes desse filtro; `tier` e `thinking`
+mostram a decisão de execução.
 
 Jev indisponível, timeout ou resposta inválida → mesmo default, `reason:
 jev-unavailable`, **o pedido segue**. O roteador é fail-open; nunca bloqueia.
@@ -351,9 +380,12 @@ o modelo preserva o cache de prompt, que domina o custo real.
 ## Observabilidade
 
 - Uma linha JSON por decisão no log do proxy: `session` (hash curto),
-  `category` + probabilidade, `difficulty` + probabilidade, `confidence`,
-  `tier`, `model`, `thinking`, `reason`, `jev_ms`. Equivale ao "routing
-  history" do route.jev.works.
+  `category`, `difficulty`, `factors`, `effort_p`, `effort_mean`,
+  `category_confidence`, `difficulty_confidence`, `confidence`, `tier`,
+  `model`, `thinking`, `reason` e `jev_ms`. Em failover, `failed_from`
+  registra os modelos excluídos e `model` identifica o modelo efetivo.
+  A mensagem enviada ao host é apenas o objeto JSON, sem prefixo nem campos
+  estruturados duplicados que acrescentem um sufixo após o objeto.
 - Header de resposta `X-Auto-Router: <model>(<thinking>);<reason>` via
   `ExecutorResponse.Headers`, para ver no cliente quem respondeu sem abrir log.
 - `plugin.register` expõe `ConfigFields`: `enabled`, `jev_api_key_env`,

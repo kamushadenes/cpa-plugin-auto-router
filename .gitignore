@@ -1,0 +1,3 @@
+bin/
+updater/__pycache__/
+updater/.pytest_cache/

@@ -1,0 +1,6 @@
+benchmarks: {arena-coding: {source: s, unit: pct}}
+models:
+  m:
+    tier: top
+    scores:
+      arena-coding: [{effort: low, value: 1, margin: 0}]

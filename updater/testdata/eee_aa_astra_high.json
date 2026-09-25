@@ -1,0 +1,152 @@
+{
+  "schema_version": "0.3.0",
+  "evaluation_id": "artificial-analysis-llms/openai/gpt-6-astra-high/1790238239.8275049",
+  "retrieved_timestamp": "1790238239.8275049",
+  "source_metadata": {
+    "source_name": "Artificial Analysis LLM API",
+    "source_type": "documentation",
+    "source_organization_name": "Artificial Analysis",
+    "source_organization_url": "https://artificialanalysis.ai/",
+    "evaluator_relationship": "third_party",
+    "additional_details": {
+      "api_endpoint": "https://artificialanalysis.ai/api/v2/data/llms/models",
+      "api_reference_url": "https://artificialanalysis.ai/api-reference",
+      "methodology_url": "https://artificialanalysis.ai/methodology",
+      "attribution_url": "https://artificialanalysis.ai/",
+      "attribution_required": "true",
+      "endpoint_scope": "llms",
+      "prompt_length": "1000",
+      "parallel_queries": "1",
+      "type_of_addition": "cron",
+      "cron_run_date": "2026-09-24",
+      "cron_adapter": "artificial_analysis",
+      "cron_run_url": "https://github.com/evaleval/every_eval_ever/actions/runs/35974958988",
+      "cron_unknown_inferred_fields": "deployment_type,model_availability"
+    }
+  },
+  "eval_library": {
+    "name": "Artificial Analysis",
+    "version": "unknown",
+    "additional_details": {
+      "api_reference_url": "https://artificialanalysis.ai/api-reference"
+    }
+  },
+  "model_info": {
+    "name": "GPT-6 Astra (high)",
+    "id": "openai/gpt-6-astra-high",
+    "developer": "openai",
+    "inference_platform": "unknown",
+    "additional_details": {
+      "raw_model_id": "e05a4828-0536-4876-870d-a235023f992b",
+      "raw_model_name": "GPT-6 Astra (high)",
+      "raw_model_slug": "gpt-6-astra-high",
+      "raw_creator_id": "e67e56e3-15cd-43db-b679-da4660a69f41",
+      "raw_creator_name": "OpenAI",
+      "raw_creator_slug": "openai",
+      "release_date": "2026-09-03",
+      "deployment_type": "unknown",
+      "model_availability": "unknown"
+    }
+  },
+  "evaluation_results": [
+    {
+      "evaluation_result_id": "artificial_analysis.artificial_analysis_intelligence_index",
+      "evaluation_name": "artificial_analysis.artificial_analysis_intelligence_index",
+      "source_data": {
+        "dataset_name": "Artificial Analysis LLM API",
+        "source_type": "url",
+        "url": [
+          "https://artificialanalysis.ai/api/v2/data/llms/models"
+        ]
+      },
+      "metric_config": {
+        "evaluation_description": "Artificial Analysis composite intelligence index.",
+        "metric_id": "artificial_analysis.artificial_analysis_intelligence_index",
+        "metric_name": "Artificial Analysis Intelligence Index",
+        "metric_kind": "index",
+        "metric_unit": "points",
+        "lower_is_better": false,
+        "score_type": "continuous",
+        "min_score": 0.0,
+        "max_score": 57.6,
+        "additional_details": {
+          "raw_metric_field": "artificial_analysis_intelligence_index",
+          "bound_strategy": "observed_max_from_snapshot"
+        }
+      },
+      "score_details": {
+        "score": 50.9,
+        "details": {
+          "raw_model_id": "e05a4828-0536-4876-870d-a235023f992b",
+          "raw_value_field": "evaluations.artificial_analysis_intelligence_index"
+        }
+      }
+    },
+    {
+      "evaluation_result_id": "artificial_analysis.artificial_analysis_coding_index",
+      "evaluation_name": "artificial_analysis.artificial_analysis_coding_index",
+      "source_data": {
+        "dataset_name": "Artificial Analysis LLM API",
+        "source_type": "url",
+        "url": [
+          "https://artificialanalysis.ai/api/v2/data/llms/models"
+        ]
+      },
+      "metric_config": {
+        "evaluation_description": "Artificial Analysis composite coding index.",
+        "metric_id": "artificial_analysis.artificial_analysis_coding_index",
+        "metric_name": "Artificial Analysis Coding Index",
+        "metric_kind": "index",
+        "metric_unit": "points",
+        "lower_is_better": false,
+        "score_type": "continuous",
+        "min_score": 0.0,
+        "max_score": 81.6,
+        "additional_details": {
+          "raw_metric_field": "artificial_analysis_coding_index",
+          "bound_strategy": "observed_max_from_snapshot"
+        }
+      },
+      "score_details": {
+        "score": 77.1,
+        "details": {
+          "raw_model_id": "e05a4828-0536-4876-870d-a235023f992b",
+          "raw_value_field": "evaluations.artificial_analysis_coding_index"
+        }
+      }
+    },
+    {
+      "evaluation_result_id": "artificial_analysis.gpqa",
+      "evaluation_name": "artificial_analysis.gpqa",
+      "source_data": {
+        "dataset_name": "Artificial Analysis LLM API",
+        "source_type": "url",
+        "url": [
+          "https://artificialanalysis.ai/api/v2/data/llms/models"
+        ]
+      },
+      "metric_config": {
+        "evaluation_description": "Benchmark score on GPQA.",
+        "metric_id": "artificial_analysis.gpqa",
+        "metric_name": "GPQA",
+        "metric_kind": "benchmark_score",
+        "metric_unit": "proportion",
+        "lower_is_better": false,
+        "score_type": "continuous",
+        "min_score": 0.0,
+        "max_score": 1.0,
+        "additional_details": {
+          "raw_metric_field": "gpqa",
+          "bound_strategy": "fixed"
+        }
+      },
+      "score_details": {
+        "score": 0.949,
+        "details": {
+          "raw_model_id": "e05a4828-0536-4876-870d-a235023f992b",
+          "raw_value_field": "evaluations.gpqa"
+        }
+      }
+    }
+  ]
+}
