@@ -311,6 +311,7 @@ func TestNewToolOnlyRequestUsesDefaultDecision(t *testing.T) {
 }
 
 func TestExistingExtremeToolOnlyStillVisionSwaps(t *testing.T) {
+	configureTest(t)
 	_, _, generation := store.Begin("vision-session")
 	store.Put("vision-session", generation, decide.State{Difficulty: decide.Extreme, Model: "blind", Thinking: "max", Tier: "top"})
 	request := pluginapi.ModelRouteRequest{
@@ -324,7 +325,7 @@ func TestExistingExtremeToolOnlyStillVisionSwaps(t *testing.T) {
 		t.Fatal(err)
 	}
 	response := decodeRouteResponse(t, result)
-	if !response.Handled || response.Reason != "vision-swap" {
+	if !response.Handled || response.Reason != "model-gone" {
 		t.Fatalf("response = %+v", response)
 	}
 	key := requestKey(request.SourceFormat, request.Headers, request.Body)
@@ -558,6 +559,7 @@ func TestMissingPendingRouteReclassifiesAndLogs(t *testing.T) {
 		t.Fatalf("reclassification log = %#v", fields)
 	}
 }
+
 func TestPendingRouteDecisionAndContextAreConsumedTogether(t *testing.T) {
 	configureTest(t)
 	pending = sync.Map{}

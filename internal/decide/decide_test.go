@@ -227,7 +227,7 @@ func TestNextEscalateTierRechooses(t *testing.T) {
 	}
 }
 
-func TestNextVisionSwapStaysInTier(t *testing.T) {
+func TestNextModelGoneNoVisionStaysInTier(t *testing.T) {
 	tb := tbl(map[string]table.Model{
 		"blind": mkv("mid", 1, false, s("arena-overall", "", 1500, 5)),
 		"eyes":  mkv("mid", 5, true, s("arena-overall", "", 1450, 5)),
@@ -235,13 +235,16 @@ func TestNextVisionSwapStaysInTier(t *testing.T) {
 	})
 	prev := State{Difficulty: Routine, Model: "blind", Thinking: "high", Tier: "mid"}
 	d, _ := Next(Input{Table: tb, Category: "writing", Difficulty: Routine, HasImage: true}, prev, true)
-	if d.Reason != "vision-swap" || d.Model != "eyes" || d.Thinking != "high" {
+	if d.Reason != "model-gone" || d.Model != "eyes" || d.Thinking != "high" {
 		t.Fatalf("%+v", d)
 	}
 }
 
 func TestNextJevUnavailable(t *testing.T) {
-	tb := tbl(map[string]table.Model{"m": mk("mid", 5, s("arena-overall", "", 1500, 5))})
+	tb := tbl(map[string]table.Model{
+		"m": mk("mid", 5, s("arena-overall", "", 1500, 5)),
+		"x": mk("top", 5, nil),
+	})
 	d, _ := Next(Input{Table: tb}, State{}, false)
 	if d.Reason != "jev-unavailable" || d.State.Difficulty != Routine {
 		t.Fatalf("%+v", d)
@@ -275,7 +278,7 @@ func TestNextFallbackHonorsRaisedTier(t *testing.T) {
 	}
 }
 
-func TestNextVisionSwapHonorsRaisedTier(t *testing.T) {
+func TestNextModelGoneNoVisionHonorsRaisedTier(t *testing.T) {
 	tb := tbl(map[string]table.Model{
 		"flash": mkv("flash", 1, true, nil),
 		"blind": mkv("mid", 2, false, nil),
@@ -283,8 +286,8 @@ func TestNextVisionSwapHonorsRaisedTier(t *testing.T) {
 	})
 	prev := State{Difficulty: Trivial, Model: "blind", Thinking: "low", Tier: "mid"}
 	d, _ := Next(Input{Table: tb, Difficulty: Trivial, HasImage: true}, prev, true)
-	if d.Reason != "vision-swap" || d.Model != "eyes" || d.Tier != "mid" {
-		t.Fatalf("vision swap must not lower a raised tier: %+v", d)
+	if d.Reason != "model-gone" || d.Model != "eyes" || d.Tier != "mid" {
+		t.Fatalf("model-gone vision replacement must not lower a raised tier: %+v", d)
 	}
 }
 
@@ -297,7 +300,7 @@ func TestNextKeepPreservesRaisedTier(t *testing.T) {
 	}
 }
 
-func TestNextJevUnavailableVisionSwapPreservesState(t *testing.T) {
+func TestNextJevUnavailableModelGoneNoVisionPreservesState(t *testing.T) {
 	tb := tbl(map[string]table.Model{
 		"blind": mkv("mid", 1, false, nil),
 		"eyes":  mkv("mid", 2, true, nil),
@@ -307,7 +310,79 @@ func TestNextJevUnavailableVisionSwapPreservesState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.Reason != "vision-swap" || d.Model != "eyes" || d.Tier != "mid" || d.State.Difficulty != Routine || d.Thinking != "high" {
-		t.Fatalf("Jev outage must preserve state while swapping vision model: %+v", d)
+	if d.Reason != "model-gone" || d.Model != "eyes" || d.Tier != "mid" || d.State.Difficulty != Routine || d.Thinking != "high" {
+		t.Fatalf("Jev outage must preserve state while replacing unavailable model: %+v", d)
+	}
+}
+
+func TestNextModelGoneChoosesReplacement(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"replacement": mk("top", 5, nil),
+	})
+	prev := State{Difficulty: Hard, Model: "removed", Thinking: "max", Tier: "top"}
+	d, err := Next(Input{Table: tb, Category: "writing", Difficulty: Trivial}, prev, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Reason != "model-gone" || d.Model != "replacement" || d.Tier != "top" || d.State.Difficulty != Hard || d.Thinking != "max" {
+		t.Fatalf("missing previous model must be replaced without lowering state: %+v", d)
+	}
+}
+
+func TestNextExcludedPreviousModelChoosesReplacement(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"old":         mk("mid", 1, nil),
+		"replacement": mk("mid", 5, nil),
+	})
+	prev := State{Difficulty: Routine, Model: "old", Thinking: "high", Tier: "mid"}
+	d, err := Next(Input{
+		Table:      tb,
+		Category:   "writing",
+		Difficulty: Trivial,
+		Exclude:    func(model string) bool { return model == "old" },
+	}, prev, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Reason != "model-gone" || d.Model != "replacement" || d.Tier != "mid" || d.State.Difficulty != Routine || d.Thinking != "high" {
+		t.Fatalf("excluded previous model must be replaced without lowering state: %+v", d)
+	}
+}
+
+func TestNextModelGoneImageChoosesVisionReplacement(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"replacement": mkv("mid", 5, true, nil),
+	})
+	prev := State{Difficulty: Routine, Model: "removed", Thinking: "high", Tier: "mid"}
+	d, err := Next(Input{Table: tb, Category: "writing", Difficulty: Trivial, HasImage: true}, prev, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Reason != "model-gone" || d.Model != "replacement" || d.Tier != "mid" || !tb.Models[d.Model].Vision {
+		t.Fatalf("image request must replace missing non-vision model with vision model: %+v", d)
+	}
+}
+
+func TestNextModelGoneJevUnavailableChoosesReplacement(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"replacement": mk("top", 5, nil),
+	})
+	prev := State{Difficulty: Extreme, Model: "removed", Thinking: "max", Tier: "top"}
+	d, err := Next(Input{Table: tb, Category: "writing", Difficulty: Extreme}, prev, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if d.Reason != "model-gone" || d.Model != "replacement" || d.Tier != "top" || d.State.Difficulty != Extreme || d.Thinking != "max" {
+		t.Fatalf("missing previous model must not be kept during Jev outage: %+v", d)
+	}
+}
+
+func TestNextModelGoneWithoutEligibleCandidateReturnsError(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"flash": mk("flash", 1, nil),
+	})
+	prev := State{Difficulty: Hard, Model: "removed", Thinking: "xhigh", Tier: "top"}
+	if _, err := Next(Input{Table: tb, Category: "writing", Difficulty: Hard}, prev, true); err == nil {
+		t.Fatal("missing previous model with no eligible replacement must return an error")
 	}
 }
