@@ -94,9 +94,9 @@ XDG_RUNTIME_DIR=/run/user/1000 systemctl --user enable --now cpa-auto-router-upd
 
 The service uses this checkout as `WorkingDirectory`, reads the TEST proxy key from `/home/hermes/cliproxyapi-test/api-key`, and writes only the TEST plugin table. Production is deliberately not a service target.
 
-## Verified
+## Historical verification
 
-All runtime checks below used TEST on port 8318. Production (`cliproxyapi.service`, port 8317) was not changed. The plugin loaded and `/v1/models` advertised `auto-router`:
+The coordinator ran the September 24 TEST checks recorded in `ce81dd0`. The logs below are historical evidence, not verification of the current commit. The retained report states that production was unchanged. The plugin loaded on port 8318 and `/v1/models` advertised `auto-router`:
 
 ```text
 Sep 24 22:37:13 hermes-chloe cli-proxy-api[3860320]: [2026-09-24 22:37:13] [--------] [info ] [host.go:352] pluginhost: plugin loaded plugin_id=auto-router path=plugins/auto-router.so
@@ -115,7 +115,7 @@ Sep 24 22:53:00 hermes-chloe cli-proxy-api[3875169]: [2026-09-24 22:53:00] [125c
 
 The original migration wording selected `claude-fable-5(xhigh)` and received a normal upstream 429 rate-limit response. No routing policy was changed to bypass it; a genuine hard debugging request later selected `claude-opus-5(xhigh)` and completed successfully.
 
-The TEST-only `cpa-auto-router-update.timer` is enabled and active. The manual service run exited 0 with `ExecMainStatus=0` at `23:12:59 UTC`; it wrote a 54,213-byte TEST table at `2026-09-24 23:12:59 UTC`. Its summary kept all 252 existing rows:
+The TEST-only `cpa-auto-router-update.timer` was enabled and active during those checks. The manual service run exited 0 with `ExecMainStatus=0` at `23:12:59 UTC`; it wrote a 54,213-byte TEST table at `2026-09-24 23:12:59 UTC`. Its summary kept all 252 existing rows:
 
 ```text
 Sep 24 23:12:59 hermes-chloe uv[3906129]: INFO updated=0 kept=252 dropped=29 unmapped=4065 untiered=['abliterated-model', 'abliterated-model-large', 'abliterated-model-large-v2', 'auto-router', 'claude-haiku-3.5', 'claude-haiku-4.5', 'claude-opus-4', 'claude-opus-4.1', 'claude-opus-4.5', 'claude-opus-4.6', 'claude-opus-4.7', 'claude-opus-4.8', 'claude-sonnet-3.7', 'claude-sonnet-4', 'claude-sonnet-4.5', 'claude-sonnet-4.6', 'codex-auto-review', 'deepseek-v4-flash-vision-exp', 'glm-5.2', 'gpt-5.5', 'gpt-image-1.5', 'gpt-image-2', 'gpt-image-2.5', 'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst', 'kimi-k2.7-code', 'mimo-v2.5-pro', 'mimo-v2.6-pro', 'mimo-v2.6-pro-ultraspeed', 'qwen-3.7-flash', 'qwen-3.8-27b'] coverage=arena=145 eee=42 epoch=57 fallback=20 openrouter=17
@@ -129,12 +129,14 @@ Sep 24 23:13:21 hermes-chloe cli-proxy-api[3875169]: 2026/09/24 23:13:21 auto-ro
 
 The service writes only the TEST table. Production is deliberately not a service target.
 
+The orchestrator ran the September 25 replay at 02:39 UTC against the TEST binary from `641a0f6`. The fixing worker did not run that replay. The journal recorded `hard`, confidence `0.97`, and Fable-to-Opus failover. Those results are historical evidence for `641a0f6`, separate from the 02:32 run and the final review-fix checks.
+
 ## Plan deviations
 
 - The updater unit uses this authorized branch checkout as `WorkingDirectory`, not the plan's example path.
 - One EEE snapshot returned HTTP 499; healthy rows were retained.
 - The planned migration wording hit a normal upstream 429. The successful hard stream used a real debugging prompt and did not change model ranking.
-- The host formatter drops arbitrary structured fields, so the plugin includes the full JSON decision in the log message; the map remains available to hosts that preserve fields.
+- In the original deployment, the host formatter dropped arbitrary structured fields, so the plugin put the JSON decision in the message. Since `641a0f6`, decision messages contain only JSON and omit duplicate host fields.
 
 ## Known limits
 
