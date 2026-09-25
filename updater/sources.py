@@ -394,7 +394,7 @@ def _arena_row(
     name = item.get("model_name")
     if not isinstance(name, str):
         return None
-    model_id = aliases.resolve("arena", name)
+    model_id = aliases.resolve_arena(name)
     if model_id is None:
         _warn_unmapped("arena", name)
         return None

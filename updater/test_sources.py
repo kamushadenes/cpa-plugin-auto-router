@@ -114,6 +114,51 @@ def test_aliases_are_exact_and_never_transfer_scores_across_model_versions():
     assert aliases.arena_effort("claude-fable-5") is None
 
 
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        ("qwen3.8-max", None),
+        ("qwen3.8-max-0902", None),
+        ("Qwen3.8 Max", None),
+        ("qwen3.8-max (xhigh)", "xhigh"),
+        ("gpt-6-astra-max", "max"),
+        ("GPT 6 Astra (xHigh)", "xhigh"),
+    ],
+)
+def test_arena_effort_strips_the_matched_alias_before_parsing(label, expected):
+    assert aliases.arena_effort(label) == expected
+
+
+@pytest.mark.parametrize(
+    ("label", "expected"),
+    [
+        ("qwen3.8-max", None),
+        ("qwen3.8-max-0902", None),
+        ("Qwen3.8 Max", None),
+        ("qwen3.8-max (xhigh)", "xhigh"),
+    ],
+)
+def test_arena_row_uses_alias_aware_effort(label, expected):
+    row = sources._arena_row(
+        "webdev",
+        {
+            "model_name": label,
+            "rating": 1660.0,
+            "rating_lower": 1650.0,
+            "rating_upper": 1670.0,
+            "leaderboard_publish_date": CAPTURE_DATE,
+        },
+        "arena-webdev",
+        "rating",
+        "rating_lower",
+        "rating_upper",
+        1.0,
+    )
+    assert row is not None
+    assert row.model == "qwen-3.8-max"
+    assert row.effort == expected
+
+
 def test_eee_keeps_newest_snapshot_and_labels_standard_error(caplog):
     fetch, _ = _fixture_fetch()
     rows = sources.eee(fetch, {"gpt-6-astra"})

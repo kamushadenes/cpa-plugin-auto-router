@@ -449,11 +449,43 @@ def resolve(source: str, label: str) -> str | None:
     return direct.get(source, {}).get(label)
 
 
-def arena_effort(name: str) -> str | None:
-    value = name.lower()
+def _canonical(value: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", value.lower())
+
+def _arena_base(name: str) -> tuple[str, int] | None:
+    for model_id in sorted(ARENA_MODELS, key=lambda value: len(_canonical(value)), reverse=True):
+        atoms = re.findall(r"[a-z0-9]+", model_id.lower())
+        pattern = r"[\s._/-]*".join(map(re.escape, atoms))
+        match = re.match(pattern + r"(?=$|[^a-z0-9])", name, re.IGNORECASE)
+        if match is not None:
+            return model_id, match.end()
+    return None
+
+
+def resolve_arena(name: str) -> str | None:
+    direct = ARENA.get(name)
+    if direct is not None:
+        return direct
+    base = re.sub(
+        r"\s*(?:\((?:xhigh|extra high|max|high|medium|low)\)|-(?:xhigh|extra-high|max|high|medium|low))\s*$",
+        "",
+        name,
+        flags=re.IGNORECASE,
+    )
+    return ARENA.get(base)
+
+
+def _arena_effort(value: str) -> str | None:
     if re.search(r"(?<![a-z])(?:xhigh|extra high)(?![a-z])", value):
         return "xhigh"
     for effort in ("max", "high", "medium", "low"):
         if re.search(rf"(?<![a-z]){effort}(?![a-z])", value):
             return effort
     return None
+
+
+def arena_effort(name: str) -> str | None:
+    match = _arena_base(name)
+    if match is not None:
+        return _arena_effort(name[match[1] :].lower())
+    return _arena_effort(name.lower())
