@@ -538,6 +538,8 @@ func retryableHostFailure(status int, err error) bool {
 		"status 503",
 		"status 529",
 		"stream closed before",
+		"stream stalled",
+		"request_timeout",
 	} {
 		if strings.Contains(message, marker) {
 			return true

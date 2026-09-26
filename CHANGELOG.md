@@ -13,5 +13,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Bounded Jev classification snippets to preserve input capacity (#7).
 
 ### Fixed
+- Retry explicit request timeouts and stalled streams before any output is emitted (#9).
 - Kept uncertain difficulty decisions within one band of the classifier without lowering existing sessions (#5).
 - Corrected extreme difficulty confidence for requests classified directly by average effort (#5).
