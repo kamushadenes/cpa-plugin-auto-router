@@ -10,7 +10,7 @@ Install `integrations/omp/auto-router-handoff.mjs` as a user extension, or load 
 omp --extension /path/to/auto-router-handoff.mjs
 ```
 
-The extension reads `X-Auto-Router` and `X-Auto-Router-Tier` after a provider response. It records state in the OMP session branch and queues one hidden `nextTurn` agent-facing transition message after `agent_end`. The first request that receives an upgraded router response cannot be changed retroactively. Automatic compaction is not claimed: `after_provider_response` fires before the stream body is consumed, `before_agent_start` is already entering the next turn, and native testing did not establish `agent_end` as an idle compaction boundary. The notice tells the agent to preserve verified state and reports that `/compact` is required when a fresh summary is needed.
+The extension reads `X-Auto-Router` and `X-Auto-Router-Tier` after a provider response and records confirmed tier-upgrade state in the session branch. Automatic semantic compaction is not implemented. The required native transaction must run after the current response and before the next promoted provider request; the public extension API exposes request-only `context` replacement and `ctx.compact()`, but no proven safe scheduling/commit path. This adapter remains an incomplete feasibility artifact and is not a completed handoff solution.
 
 For persistent use, enroll the file in the installed OMP global extension allowlist. A loose file is not automatically loaded by Coding Agent; the Coding Agent repository must add the path to its explicit six-extension allowlist. Do not weaken extension discovery or steering guards.
 

@@ -9,7 +9,7 @@
 
 - `retryableHostFailure` now recognizes explicit `request_timeout` and `stream stalled` markers while preserving authentication and invalid-request exclusions.
 - Buffered and streaming executor responses expose `X-Auto-Router-Tier`; tests cover both response paths.
-- OMP adapter reads `X-Auto-Router` plus `X-Auto-Router-Tier`, persists per-session transition state, deduplicates transitions, and queues one hidden `nextTurn` guidance message for a confirmed tier upgrade.
+- OMP adapter records confirmed tier-upgrade state and queues guidance, but it does not implement automatic semantic compaction. This is partial and not merge-ready.
 - Hermes plugin registers `post_api_request` and `pre_llm_call`. It persists the observed response model per Hermes session and returns one factual model-change notice on the next real LLM request. It does not call `inject_message` and does not compact history.
 
 ## Verification
@@ -37,6 +37,7 @@ All commands ran in the isolated worktree unless stated otherwise.
 - Lab `127.0.0.1:8318` was unavailable (`000`); `127.0.0.1:8317` returned `401`. No lab router inference or effective `X-Auto-Router` model was observed.
 - The local OMP smoke requested `gpt-5.6-sol` and returned `ok`; this proves extension loading and inference, not router header delivery.
 - No production service or production proxy was restarted.
+- OMP lifecycle trace: `src/sdk.ts:3549-3551` calls `extensionRunner.emitContext(messages)` in the provider-context transform; `src/sdk.ts:3601-3605` separately wires `before_provider_request` and `after_provider_response`. `context` is request-only and pre-serialization, but the public extension API does not expose a safe native summarizer invocation at that boundary.
 
 ## Remaining gates
 
@@ -45,6 +46,7 @@ All commands ran in the isolated worktree unless stated otherwise.
 - Hermes automatic compaction remains blocked. The public `register_context_engine` seam exists, but replacing the configured built-in compressor without preserving its full construction/session lifecycle would be unsafe; documented request hooks expose no confirmed router tier/reason pair. Hermes remains guidance-only.
 - Conservative loop escalation was not enabled. The inspected protocols do not provide one uniform, reliable explicit failure signal across chat-completions, Anthropic, OpenAI tool messages, and Responses without provider-specific parsing. Repeated calls alone are insufficient; stale or arbitrary error-shaped output must not escalate.
 - Lab router acceptance remains blocked until an authorized lab router endpoint is available. No credentials were copied and no production endpoint was mutated.
+- The task-owned Hermes lab plugin was disabled and removed from `~/.hermes/plugins/auto-router-handoff`; no task-owned unsafe plugin remains installed.
 
 ## Rollback
 
