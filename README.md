@@ -157,3 +157,4 @@ The orchestrator ran the September 25 replay at 02:39 UTC against the TEST binar
 - `Available` host cooldown information is not wired into the router in this version.
 - Models without a tier are reported and are not routed.
 - The tool-failure raise fires only on explicit structural markers. A client that reports failures purely as text never raises difficulty, by design.
+- `go test -race` fails two shutdown tests because their cleanup helper resets the stream lifecycle while the forwarding goroutine still reads it. The defect predates this work and is tracked in issue #11; every other package and test passes under `-race`.

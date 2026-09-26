@@ -36,11 +36,38 @@ Only structural markers on the tool result: `is_error: true`, `status` of `faile
 
 The detector is proven against fixtures for the two formats this executor accepts. Whether OMP or Hermes emits these markers on the wire was not observed in the lab, so real-client coverage is unverified. A client that reports failures only as text never raises difficulty.
 
+## Race investigation
+
+External review reported two failures under `go test -race ./...`:
+`TestPluginShutdownClosesStalledHostStream` and
+`TestPluginShutdownClosesHostStreamRegisteredDuringShutdown`.
+
+Both are pre-existing and unrelated to this work. `resetPluginLifecycleForTest`
+(shutdown_test.go:18) writes the package-level `streamLifecycle` from `t.Cleanup`
+while the forwarding goroutine `executeStream` started still reads it through
+`endPluginStream` and `finishPluginShutdownLocked`. The test returns before that
+goroutine finishes.
+
+Before and after comparison, same command on both trees:
+
+- `origin/main` in a detached worktree: `go test -race . -run TestPluginShutdown -count=1` exits 1 with those two test names and that race site.
+- Branch head: the same command exits 1 with the same two test names and the same race site.
+
+The two runs differ only in the checkout path printed in the trace. Nothing in
+this branch changed shutdown behavior, so the failures are not a regression and
+shutdown was left untouched. The defect is filed as issue #11.
+
+Everything else is clean under the detector:
+
+- `go test -race ./internal/...`: all six packages pass, including the new `internal/notice`.
+- `go test -race .` with only those two known-failing tests skipped: passes, covering every test added here.
+
 ## Remaining gates
 
 - `X-Auto-Router` and `X-Auto-Router-Tier` reach a client only when the proxy sets `passthrough-headers: true`; otherwise the JSON decision log stays authoritative.
 - A `responses` request whose `input` is a plain string is forwarded unchanged, because converting it to an array would change the request shape.
 - Lab router acceptance still needs a reachable authorized endpoint. `127.0.0.1:8318` refused connections and `127.0.0.1:8317` answered `401`, so no end-to-end router receipt was captured.
+- The shutdown-test race in issue #11 is still open.
 - No production service was restarted, and no credentials were copied or printed.
 - The task-owned Hermes lab plugin was disabled and removed from `~/.hermes/plugins/auto-router-handoff`.
 
