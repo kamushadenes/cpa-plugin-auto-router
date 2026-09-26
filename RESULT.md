@@ -1,55 +1,52 @@
 # Router handoff result
 
-Scope for this branch: bounded transient-failure failover, an authoritative router tier header, and safe model-transition guidance for OMP and Hermes. Context handling and loop escalation are out of scope and are not implemented here.
+Scope: bounded transient-failure failover, a tier header, a model-change notice injected into the proxy request body, and a conservative difficulty raise driven by explicitly marked tool failures. No harness plugins.
 
-## Delivered commits
+## Delivered
 
-- `44d9cc144936743c223e4844b3b31211b05ded05`: retry explicit transient host failures.
-- `d77e889d8f4e4f96064c76551214796fdbe50947`: router tier header and native handoff adapters.
-- `00d0d8241a77825a258200ded5e224e0167fefe1`: first evidence report.
-- `20d4035bf755d17660047cbd6ee041d284930832`: feasibility findings.
-- `26c500df555712741d0418d4201479b4c3ef2c30`: partial-status note.
+- `retryableHostFailure` recognizes explicit `request_timeout` and `stream stalled` markers and keeps the authentication and invalid-request exclusions. Streaming still retries only before the first emitted chunk.
+- Buffered and streaming responses carry `X-Auto-Router-Tier` next to `X-Auto-Router`.
+- `internal/notice` appends a notice to the outgoing body as a trailing user turn in the request's own format: a `user` message for `chat-completions`, a `message` item with one `input_text` part for `responses`.
+  - A retry after a transport failure says the previous request did not complete. It never claims the previous model was incapable.
+  - A first attempt carries a notice only when the router moved the session to a different model, and that wording says the session moved.
+  - A raise caused by repeated tool failures reports the reason `tool-error-bump`.
+  - The original body is never mutated, so routing and Jev never see a notice. A body that does not parse, lacks the turn list, or arrives in another format is forwarded unchanged.
+- Difficulty rises one band after three consecutive tool results that carry an explicit error marker and answer a call issued in the same request. The raise is latched to the episode, identified by the call the trailing failure run started with, so the same run never raises twice and a fresh run after progress can raise once more. Session floors still prevent any decrease.
 
-## Delivered behavior
+## Removed
 
-- `retryableHostFailure` recognizes explicit `request_timeout` and `stream stalled` markers and keeps the authentication and invalid-request exclusions. Streaming retries stay restricted to the window before the first emitted chunk.
-- Buffered and streaming executor responses carry `X-Auto-Router-Tier` alongside `X-Auto-Router`. Tests assert both response paths.
-- The OMP extension tracks the per-session effective model and tier in the session branch and queues exactly one hidden `nextTurn` notice per real model change. The notice reports the previous model, the effective model, and the router's own reason.
-- The Hermes plugin registers `post_api_request` and `pre_llm_call`. It stores the observed effective model per session and returns one factual model-change notice as context on the next real LLM request. It never calls `inject_message`.
+- `integrations/omp` and `integrations/hermes`, their tests, and their documentation. No harness plugin ships from this repository.
+
+## What counts as a tool failure
+
+Only structural markers on the tool result: `is_error: true`, `status` of `failed` or `error`, or a non-empty `error` field. Free-form text is never read as failure, so an unmarked `{"error": ...}` payload, a message that merely mentions an error, and ordinary user text are all inert. A result that answers no call issued in the same request is ignored. Marked failures naming authentication, permission, quota, or billing problems are excluded because no tier resolves them.
 
 ## Verification
 
-All commands ran in the isolated worktree unless stated otherwise.
-
-- `make test`: passed. Go packages green; updater pytest reported `71 passed`.
+- `go vet ./...`: clean.
+- `go test ./...`: passed, including the new `internal/notice` package.
+- `make test`: passed; updater pytest reported `71 passed`.
 - `make build`: passed; produced `bin/auto-router.so`.
-- `go test ./...`: passed.
-- `node integrations/omp/test_handoff_policy.mjs`: passed.
-- `node integrations/omp/test_extension.mjs`: passed.
-- `python3 integrations/hermes/test_handoff_policy.py`: passed, 2 tests.
-- `python3 integrations/hermes/test_plugin.py`: passed, 1 test.
-- `hermes plugins doctor integrations/hermes --ci`: passed with an isolated `HERMES_HOME`; 2 hooks registered.
-- OMP native load and inference: `omp -p --no-session --no-tools --extension integrations/omp/auto-router-handoff.mjs --model gpt-5.6-sol "Reply exactly ok"` returned `ok`.
-- Hermes lab plugin doctor on `hermes@10.23.23.144`: passed; 2 hooks registered.
-- Hermes lab inference: `hermes -z "Reply exactly ok"` returned `ok`.
+- `internal/notice` covers the chat-completions append, the responses append, tool-pairing preservation, unsupported and unparsable bodies, and large-integer precision.
+- `internal/snippet` covers marked streaks in both formats, uncorrelated results, unmarked error text, successful output, user text mentioning errors, access failures, an explicit `is_error: false`, and reset after progress.
+- `plugin_test.go` covers the latch: below threshold does not raise, the threshold raises one band once, a longer run of the same episode does not raise again, a new episode raises once more, and unmarked results clear the latch without demoting.
+- `host_test.go` covers notice selection: unchanged sessions and same-model routes are untouched, a capability move and a failover retry produce different wording, the first attempt carries no failover notice on either the buffered or streaming path, and the original body is unmutated.
 
-## Lab surface and model evidence
+## Client coverage caveat
 
-- Lab Hermes reported provider `custom:cliproxy-lab` and model `kimi-k3`; the benign lab inference returned `ok`.
-- Lab `127.0.0.1:8318` did not accept connections; `127.0.0.1:8317` answered `401`. No lab router inference was executed, so no effective `X-Auto-Router` model was observed end to end.
-- The local OMP smoke requested `gpt-5.6-sol` and returned `ok`. That proves extension loading and live inference, not router header delivery.
-- No production service or production proxy was restarted, and no credentials were copied or printed.
-- The task-owned Hermes lab plugin was disabled and removed from `~/.hermes/plugins/auto-router-handoff`.
+The detector is proven against fixtures for the two formats this executor accepts. Whether OMP or Hermes emits these markers on the wire was not observed in the lab, so real-client coverage is unverified. A client that reports failures only as text never raises difficulty.
 
 ## Remaining gates
 
-- Coding Agent must explicitly enroll the OMP extension in its global extension allowlist. A loose file is not loaded automatically.
-- End-to-end router header delivery still needs a reachable authorized lab router endpoint.
-- `X-Auto-Router` and `X-Auto-Router-Tier` reach a client only when the proxy sets `passthrough-headers: true`; otherwise the JSON decision log remains authoritative.
-- The router header arrives after the upstream call, so a consumer observes a model change only after that response. Both adapters report the change on the following request.
+- `X-Auto-Router` and `X-Auto-Router-Tier` reach a client only when the proxy sets `passthrough-headers: true`; otherwise the JSON decision log stays authoritative.
+- A `responses` request whose `input` is a plain string is forwarded unchanged, because converting it to an array would change the request shape.
+- Lab router acceptance still needs a reachable authorized endpoint. `127.0.0.1:8318` refused connections and `127.0.0.1:8317` answered `401`, so no end-to-end router receipt was captured.
+- No production service was restarted, and no credentials were copied or printed.
+- The task-owned Hermes lab plugin was disabled and removed from `~/.hermes/plugins/auto-router-handoff`.
 
 ## Rollback
 
-- Revert `d77e889d8f4e4f96064c76551214796fdbe50947` to remove the tier header and both adapters.
+- Revert the tool-failure raise commit to drop `ErrorEpisode` and the streak detector.
+- Revert the notice commit to restore untouched request bodies and drop `internal/notice`.
+- Revert `d77e889d8f4e4f96064c76551214796fdbe50947` to remove the tier header.
 - Revert `44d9cc144936743c223e4844b3b31211b05ded05` to remove the explicit retry markers.
-- Remove the OMP extension from the enrolled allowlist and delete the Hermes plugin directory from the target profile.

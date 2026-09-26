@@ -52,6 +52,18 @@ The executor tries at most three ranked models when the host returns an allow-li
 
 A successful retry stores the effective session model. The decision log and `X-Auto-Router` identify that model with `reason: failover` and the ordered `failed_from` list. This host version exposes callback errors as text, so the plugin matches explicit rate-limit, overload, cooldown, unavailable-auth, API-error, selected status, and premature-stream-close markers. Invalid requests and authentication errors return immediately. No host patch is required; numeric status propagation is tracked in issue #3.
 
+Every retry after a transport failure carries a notice appended to the request body as a trailing user turn, in the request's own format: a `user` message for `chat-completions`, an `input_text` message item for `responses`. It names the model that did not complete, the model now running, and `failover`. A first attempt carries a notice only when the router moved the session to a different model, and that wording says the session moved rather than claiming the previous model failed. Existing turns, tool-call pairs, unknown fields, and numeric precision are preserved; the original body is never mutated, so the routing and Jev paths never see a notice.
+
+`X-Auto-Router-Tier` accompanies `X-Auto-Router` on both the buffered and streaming paths and names the tier the router selected.
+
+## Difficulty raise from repeated tool failures
+
+Three consecutive tool results that carry an explicit error marker and answer a call issued in the same request raise difficulty by one band. The marker must be structural: `is_error: true`, `status` of `failed` or `error`, or a non-empty `error` field on the tool result. Free-form text is never read as failure, so an unmarked `{"error": ...}` payload does not count. Results whose marked failure names an access or environment problem (authentication, permission, quota, billing) are excluded because no tier resolves them.
+
+The raise is latched per episode. An episode is the trailing run of marked failures, identified by the call it started with, so a longer run of the same failures never raises twice and a fresh run after any progress can raise once more. The session floor still applies: difficulty, tier, and thinking never decrease.
+
+Verified formats are the two this executor accepts. `chat-completions` carries the marker on the `tool` message and `responses` on the `function_call_output` item. Whether OMP and Hermes actually emit these markers on the wire was not confirmed, so the detector is proven by fixtures rather than by observed client traffic.
+
 ## Benchmark table and tiers
 
 `table/tiers.yaml` is operator-owned. It declares the `flash`, `mid`, and `top` sets; the updater never changes it. The TEST catalog had 50 models, of which all 20 tier entries were present in the generated table:
@@ -144,3 +156,4 @@ The orchestrator ran the September 25 replay at 02:39 UTC against the TEST binar
 - Session state is in memory and is lost when the proxy restarts.
 - `Available` host cooldown information is not wired into the router in this version.
 - Models without a tier are reported and are not routed.
+- The tool-failure raise fires only on explicit structural markers. A client that reports failures purely as text never raises difficulty, by design.

@@ -15,6 +15,7 @@ import (
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/session"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/tidwall/gjson"
 )
 
 type fakeStreamRead struct {
@@ -31,7 +32,9 @@ type fakeHostCalls struct {
 	streamReads      map[string][]fakeStreamRead
 
 	executeModels []string
+	executeBodies [][]byte
 	streamModels  []string
+	streamBodies  [][]byte
 	hostCloses    []string
 	emits         []string
 	pluginCloses  chan rpcStreamCloseRequest
@@ -60,6 +63,7 @@ func (f *fakeHostCalls) call(method string, payload any) (json.RawMessage, error
 		}
 		model := stripThinkingSuffix(req.Model)
 		f.executeModels = append(f.executeModels, req.Model)
+		f.executeBodies = append(f.executeBodies, req.Body)
 		if err := f.executeErrors[model]; err != nil {
 			return nil, err
 		}
@@ -76,6 +80,7 @@ func (f *fakeHostCalls) call(method string, payload any) (json.RawMessage, error
 		}
 		model := stripThinkingSuffix(req.Model)
 		f.streamModels = append(f.streamModels, req.Model)
+		f.streamBodies = append(f.streamBodies, req.Body)
 		response, ok := f.streamResponses[model]
 		if !ok {
 			return nil, fmt.Errorf("no stream response for %s", model)
@@ -449,6 +454,93 @@ func TestExecuteRetriesBuffered429WithDifferentModelAndPersistsSession(t *testin
 		t.Fatalf("effective session state = %#v, present=%v", state, ok)
 	}
 	assertFailoverLog(t, fake, "second", []string{"first"})
+}
+
+func TestRetryBodyCarriesModelChangeNoticeOnlyAfterFailure(t *testing.T) {
+	configureFailoverHostTest(t)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.executeResponses["first"] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusTooManyRequests, Body: []byte(`{"error":"rate limit"}`)}
+	fake.executeResponses["second"] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusOK, Body: []byte(`{"ok":true}`)}
+
+	if _, err := execute(seedHostDecision(t, "notice-session", "first")); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.executeBodies) != 2 {
+		t.Fatalf("host execute bodies = %d, want 2", len(fake.executeBodies))
+	}
+	if strings.Contains(string(fake.executeBodies[0]), "Router note") {
+		t.Fatalf("first attempt carried a notice: %s", fake.executeBodies[0])
+	}
+	messages := gjson.GetBytes(fake.executeBodies[1], "messages").Array()
+	if len(messages) != 2 {
+		t.Fatalf("retry messages = %d, want 2: %s", len(messages), fake.executeBodies[1])
+	}
+	appended := messages[1]
+	if appended.Get("role").String() != "user" {
+		t.Fatalf("retry turn = %s", appended.Raw)
+	}
+	text := appended.Get("content").String()
+	if !strings.Contains(text, "first") || !strings.Contains(text, "second") || !strings.Contains(text, "failover") {
+		t.Fatalf("retry notice = %q", text)
+	}
+}
+
+func TestStreamRetryBodyCarriesModelChangeNotice(t *testing.T) {
+	configureFailoverHostTest(t)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.streamResponses["first"] = pluginapi.HostModelStreamResponse{StatusCode: http.StatusTooManyRequests, StreamID: "stream-first"}
+	fake.streamResponses["second"] = pluginapi.HostModelStreamResponse{StatusCode: http.StatusOK, StreamID: "stream-second"}
+	fake.streamReads["stream-second"] = []fakeStreamRead{{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: ok\n\n"), Done: true}}}
+
+	if _, err := executeStream(seedHostDecision(t, "notice-stream-session", "first", "plugin-stream-notice")); err != nil {
+		t.Fatal(err)
+	}
+	waitPluginClose(t, fake)
+	if len(fake.streamBodies) != 2 {
+		t.Fatalf("host stream bodies = %d, want 2", len(fake.streamBodies))
+	}
+	if strings.Contains(string(fake.streamBodies[0]), "Router note") {
+		t.Fatalf("first stream attempt carried a notice: %s", fake.streamBodies[0])
+	}
+	if !strings.Contains(string(fake.streamBodies[1]), "Router note") {
+		t.Fatalf("stream retry missing notice: %s", fake.streamBodies[1])
+	}
+}
+
+func TestRetryBodySelectsNoticeByTransitionKind(t *testing.T) {
+	original := []byte(`{"messages":[{"role":"user","content":"keep going"}]}`)
+	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		SourceFormat: "chat-completions", OriginalRequest: original,
+	}}
+	decision := decide.Decision{Choice: decide.Choice{Model: "top-model"}, Reason: "escalate-tier"}
+
+	if got := retryBody(req, nil, decide.Decision{Choice: decide.Choice{Model: "same"}, Reason: "keep"}, routeContext{previousModel: "same"}); string(got) != string(original) {
+		t.Fatalf("unchanged session was rewritten: %s", got)
+	}
+	if got := retryBody(req, nil, decision, routeContext{previousModel: "top-model"}); string(got) != string(original) {
+		t.Fatalf("same model was rewritten: %s", got)
+	}
+
+	capability := retryBody(req, nil, decision, routeContext{previousModel: "mid-model"})
+	capabilityText := gjson.GetBytes(capability, "messages.1.content").String()
+	if !strings.Contains(capabilityText, "moved from mid-model to top-model") || !strings.Contains(capabilityText, "escalate-tier") {
+		t.Fatalf("capability notice = %q", capabilityText)
+	}
+	if strings.Contains(capabilityText, "did not complete") {
+		t.Fatalf("capability notice claims a transport failure: %q", capabilityText)
+	}
+
+	failover := retryBody(req, []string{"mid-model"}, decision, routeContext{previousModel: "mid-model"})
+	failoverText := gjson.GetBytes(failover, "messages.1.content").String()
+	if !strings.Contains(failoverText, "did not complete") || strings.Contains(failoverText, "moved from") {
+		t.Fatalf("failover notice = %q", failoverText)
+	}
+
+	if string(req.OriginalRequest) != string(original) {
+		t.Fatalf("original request body was mutated: %s", req.OriginalRequest)
+	}
 }
 
 func TestExecuteRetriesTransportMarkerError(t *testing.T) {

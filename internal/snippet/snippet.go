@@ -12,6 +12,45 @@ type Signals struct {
 	Messages          int    `json:"messages"`
 	Format            string `json:"format"`
 	HasNewUserMessage bool   `json:"-"`
+	// ToolErrorStreak counts the trailing tool results that carry an explicit
+	// error marker. Free-form text is never inspected for failure, and markers
+	// naming an access or environment problem are excluded because no model
+	// tier resolves them.
+	ToolErrorStreak int `json:"tool_error_streak"`
+	// ToolErrorEpisode identifies that trailing run by the call it started
+	// with, so a longer run of the same failures stays one episode and a fresh
+	// run after any progress is a different one.
+	ToolErrorEpisode string `json:"-"`
+}
+
+// notCapability lists access and environment problems that a stronger model
+// cannot fix, so a marked failure of this kind never counts toward the streak.
+var notCapability = []string{
+	"authentication", "authenticate", "unauthorized", "401", "403",
+	"permission denied", "forbidden", "access denied",
+	"credential", "api key", "token expired", "quota", "billing", "payment",
+}
+
+// explicitToolError reports whether a tool result declares failure through a
+// structured field rather than through its text.
+func explicitToolError(item gjson.Result) (marked bool, counts bool) {
+	flag := item.Get("is_error")
+	status := strings.ToLower(strings.TrimSpace(item.Get("status").String()))
+	errorField := item.Get("error")
+	switch {
+	case flag.Exists() && flag.Type == gjson.True:
+	case status == "failed" || status == "error":
+	case errorField.Exists() && errorField.Type != gjson.Null && errorField.Raw != "{}" && errorField.String() != "":
+	default:
+		return false, false
+	}
+	text := strings.ToLower(contentText(item.Get("content")) + " " + item.Get("output").String() + " " + errorField.String())
+	for _, marker := range notCapability {
+		if strings.Contains(text, marker) {
+			return true, false
+		}
+	}
+	return true, true
 }
 
 // Extract returns the last user text, bounded by Unicode characters, and local
@@ -57,6 +96,7 @@ func Extract(format string, body []byte, max int) (string, Signals) {
 			lastIsUserText = userText(items[len(items)-1]) != ""
 		}
 	}
+	sig.ToolErrorStreak, sig.ToolErrorEpisode = toolErrorStreak(root)
 	if max <= 0 {
 		return "", sig
 	}
@@ -70,6 +110,68 @@ func arrayLen(value gjson.Result) int {
 		return 0
 	}
 	return len(value.Array())
+}
+
+// toolErrorStreak counts trailing tool results that carry an explicit error
+// marker and answer a tool call present in the same request, and returns the
+// call id the run started with. Assistant tool calls between results are
+// skipped; any unmarked tool result, uncorrelated result, user turn, or
+// excluded failure ends the run.
+func toolErrorStreak(root gjson.Result) (int, string) {
+	items := root.Get("messages").Array()
+	if len(items) == 0 {
+		items = root.Get("input").Array()
+	}
+	calls := issuedToolCalls(items)
+	streak := 0
+	episode := ""
+	for i := len(items) - 1; i >= 0; i-- {
+		item := items[i]
+		itemType := item.Get("type").String()
+		isToolResult := item.Get("role").String() == "tool" ||
+			itemType == "function_call_output" || itemType == "custom_tool_call_output"
+		if !isToolResult {
+			if item.Get("role").String() == "assistant" || itemType == "function_call" ||
+				itemType == "custom_tool_call" || itemType == "reasoning" {
+				continue
+			}
+			return streak, episode
+		}
+		callID := item.Get("tool_call_id").String()
+		if callID == "" {
+			callID = item.Get("call_id").String()
+		}
+		if callID == "" || !calls[callID] {
+			return streak, episode
+		}
+		marked, counts := explicitToolError(item)
+		if !marked || !counts {
+			return streak, episode
+		}
+		streak++
+		episode = callID
+	}
+	return streak, episode
+}
+
+// issuedToolCalls collects the call identifiers the assistant actually issued,
+// in either request format, so a result cannot claim a failure nobody called.
+func issuedToolCalls(items []gjson.Result) map[string]bool {
+	calls := make(map[string]bool)
+	for _, item := range items {
+		for _, call := range item.Get("tool_calls").Array() {
+			if id := call.Get("id").String(); id != "" {
+				calls[id] = true
+			}
+		}
+		switch item.Get("type").String() {
+		case "function_call", "custom_tool_call":
+			if id := item.Get("call_id").String(); id != "" {
+				calls[id] = true
+			}
+		}
+	}
+	return calls
 }
 
 func userText(item gjson.Result) string {

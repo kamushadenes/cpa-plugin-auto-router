@@ -1,6 +1,0 @@
-name: auto-router-handoff
-version: 0.1.0
-description: Reports observed auto-router model transitions without mutating Hermes history.
-provides_hooks:
-  - post_api_request
-  - pre_llm_call

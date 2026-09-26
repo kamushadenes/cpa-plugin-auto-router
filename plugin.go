@@ -285,6 +285,8 @@ type routeContext struct {
 	jevMillis            int64
 	hasImage             bool
 	estTokens            int
+	previousModel        string
+	errorBumped          bool
 }
 
 func routeModel(raw []byte) ([]byte, error) {
@@ -375,6 +377,23 @@ func lowConfidenceDifficulty(jevLabel, previous string) string {
 	return fallback
 }
 
+// toolErrorBumpThreshold is the number of consecutive explicitly marked,
+// correlated tool failures that raise difficulty one band, once per episode.
+const toolErrorBumpThreshold = 3
+
+func oneStepAboveDifficulty(difficulty string) string {
+	switch difficulty {
+	case decide.Trivial:
+		return decide.Routine
+	case decide.Routine:
+		return decide.Hard
+	case decide.Hard:
+		return decide.Extreme
+	default:
+		return difficulty
+	}
+}
+
 func decideFor(req pluginapi.ModelRouteRequest, prev decide.State, hasPrev bool) (decide.Decision, error) {
 	decision, _, _, err := decideForWithContext(req, prev, hasPrev)
 	return decision, err
@@ -437,12 +456,23 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 	if meta.difficulty == "" {
 		meta.difficulty = difficulty
 	}
+	episode := prev.ErrorEpisode
+	bumped := false
+	if signals.ToolErrorStreak == 0 {
+		episode = ""
+	} else if signals.ToolErrorStreak >= toolErrorBumpThreshold && signals.ToolErrorEpisode != episode {
+		difficulty = oneStepAboveDifficulty(difficulty)
+		meta.difficulty = difficulty
+		episode = signals.ToolErrorEpisode
+		bumped = true
+	}
 	input := decide.Input{Table: tb, Category: category, Difficulty: difficulty, HasImage: signals.Images > 0, EstTokens: estTokens, Exclude: excluded}
 	decision, err := decide.Next(input, prev, jevOK)
 	if err != nil {
 		return decide.Decision{}, routeMeta{}, routeContext{}, err
 	}
-	return decision, meta, routeContext{category: category, factors: meta.factors, effortP: meta.effortP, effortMean: meta.effortMean, difficulty: difficulty, categoryConfidence: meta.categoryConfidence, difficultyConfidence: meta.difficultyConfidence, confidence: meta.confidence, jevMillis: meta.jevMillis, hasImage: signals.Images > 0, estTokens: estTokens}, nil
+	decision.State.ErrorEpisode = episode
+	return decision, meta, routeContext{category: category, factors: meta.factors, effortP: meta.effortP, effortMean: meta.effortMean, difficulty: difficulty, categoryConfidence: meta.categoryConfidence, difficultyConfidence: meta.difficultyConfidence, confidence: meta.confidence, jevMillis: meta.jevMillis, hasImage: signals.Images > 0, estTokens: estTokens, previousModel: prev.Model, errorBumped: bumped}, nil
 }
 
 func routeResponse(callbackID, sid string, decision decide.Decision, meta routeMeta) ([]byte, error) {

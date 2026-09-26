@@ -120,6 +120,7 @@ func mergeState(stored, incoming decide.State) decide.State {
 	merged.Tier = maxFloorValue(merged.Tier, incoming.Tier, tierRank)
 	merged.Thinking = maxFloorValue(merged.Thinking, incoming.Thinking, thinkingRank)
 
+	merged.ErrorEpisode = incoming.ErrorEpisode
 	if incoming.Model != "" && stateFloorAtLeast(incoming, merged) {
 		merged.Model = incoming.Model
 	}

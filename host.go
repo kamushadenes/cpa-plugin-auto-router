@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
+	"github.com/chloeassistant/cpa-plugin-auto-router/internal/notice"
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/session"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
@@ -159,7 +160,7 @@ func execute(raw []byte) ([]byte, error) {
 				ExitProtocol:  req.SourceFormat,
 				Model:         model,
 				Stream:        false,
-				Body:          req.OriginalRequest,
+				Body:          retryBody(req, failed, decision, routeCtx),
 				Headers:       req.Headers,
 				Query:         req.Query,
 				Alt:           req.Alt,
@@ -235,7 +236,7 @@ func executeStream(raw []byte) ([]byte, error) {
 	var ready hostStreamReady
 	var lastErr error
 	for attempt := range maxHostAttempts {
-		ready, lastErr = openHostStream(context.Background(), req, routedModel(decision))
+		ready, lastErr = openHostStream(context.Background(), req, routedModel(decision), retryBody(req, failed, decision, routeCtx))
 		if lastErr == nil {
 			break
 		}
@@ -341,20 +342,51 @@ func routedModel(decision decide.Decision) string {
 // ponytail: three host attempts, no retry framework until a real policy needs one.
 const maxHostAttempts = 3
 
+// retryBody returns the body for one host attempt. A retry after a transport
+// failure carries a failover notice naming the model that just failed. A first
+// attempt carries a capability notice only when the router actually moved this
+// session to a different model. Otherwise the original body is sent untouched.
+func retryBody(req rpcExecutorRequest, failed []string, decision decide.Decision, routeCtx routeContext) []byte {
+	if len(failed) > 0 {
+		return notice.Inject(req.SourceFormat, req.OriginalRequest,
+			notice.Failover(failed[len(failed)-1], decision.Model, "failover"))
+	}
+	if !capabilityTransition(decision.Reason) || routeCtx.previousModel == "" || routeCtx.previousModel == decision.Model {
+		return req.OriginalRequest
+	}
+	reason := decision.Reason
+	if routeCtx.errorBumped {
+		reason = "tool-error-bump"
+	}
+	return notice.Inject(req.SourceFormat, req.OriginalRequest,
+		notice.Capability(routeCtx.previousModel, decision.Model, reason))
+}
+
+// capabilityTransition reports whether a routing reason means the session moved
+// to a different model for capability or availability, not transport retry.
+func capabilityTransition(reason string) bool {
+	switch reason {
+	case "escalate-tier", "model-gone", "context_overflow_risk":
+		return true
+	default:
+		return false
+	}
+}
+
 type hostStreamReady struct {
 	streamID     string
 	firstPayload []byte
 	done         bool
 }
 
-func openHostStream(ctx context.Context, req rpcExecutorRequest, model string) (hostStreamReady, error) {
+func openHostStream(ctx context.Context, req rpcExecutorRequest, model string, body []byte) (hostStreamReady, error) {
 	responseRaw, err := hostCall(pluginabi.MethodHostModelExecuteStream, hostModelExecutionRequest{
 		HostModelExecutionRequest: pluginapi.HostModelExecutionRequest{
 			EntryProtocol: req.SourceFormat,
 			ExitProtocol:  req.SourceFormat,
 			Model:         model,
 			Stream:        true,
-			Body:          req.OriginalRequest,
+			Body:          body,
 			Headers:       req.Headers,
 			Query:         req.Query,
 			Alt:           req.Alt,
