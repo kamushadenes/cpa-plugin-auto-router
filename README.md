@@ -58,11 +58,13 @@ Every retry after a transport failure carries a notice appended to the request b
 
 ## Difficulty raise from repeated tool failures
 
-Three consecutive tool results that carry an explicit error marker and answer a call issued in the same request raise difficulty by one band. The marker must be structural: `is_error: true`, `status` of `failed` or `error`, or a non-empty `error` field on the tool result. Free-form text is never read as failure, so an unmarked `{"error": ...}` payload does not count. Results whose marked failure names an access or environment problem (authentication, permission, quota, billing) are excluded because no tier resolves them.
+Three consecutive tool results that declare failure through a structured field and answer a call issued in the same request raise difficulty by one band. A result declares failure through `is_error: true`, a `status` of `failed` or `error`, a non-empty `error` field, or a tool execution envelope whose numeric `exit_code` is non-zero. Prose is never read as failure, so an unmarked message that merely mentions an error does not count, and `error` values of `null`, `false`, `0`, `""`, `{}` and `[]` are all treated as absence of failure.
+
+The execution envelope is matched by shape, not by guesswork: the payload must carry both `output` and a numeric `exit_code`. A user document that merely contains an `error` key cannot masquerade as execution metadata. Results whose marked failure names an access or environment problem (authentication, permission, quota, billing) are excluded because no tier resolves them.
 
 The raise is latched per episode. An episode is the trailing run of marked failures, identified by the call it started with, so a longer run of the same failures never raises twice and a fresh run after any progress can raise once more. The session floor still applies: difficulty, tier, and thinking never decrease.
 
-Verified formats are the two this executor accepts. `chat-completions` carries the marker on the `tool` message and `responses` on the `function_call_output` item. Whether OMP and Hermes actually emit these markers on the wire was not confirmed, so the detector is proven by fixtures rather than by observed client traffic.
+The envelope shape was captured on hermes-lab from a real Hermes turn driven against a disposable recorder. A failing command returned `{"output": "", "exit_code": 7, "error": null}` and a passing command returned `{"output": "", "exit_code": 0, "error": null}`, both on a `tool` message carrying only `content`, `role` and `tool_call_id`. OMP's wire shape was not captured, so its coverage is unverified.
 
 ## Benchmark table and tiers
 

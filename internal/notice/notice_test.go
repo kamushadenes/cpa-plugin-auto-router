@@ -81,6 +81,27 @@ func TestInjectPreservesLargeIntegerFields(t *testing.T) {
 	}
 }
 
+func TestInjectRefusesToSplitUnansweredToolCalls(t *testing.T) {
+	chat := []byte(`{"messages":[{"role":"user","content":"go"},{"role":"assistant","tool_calls":[{"id":"call-1","type":"function","function":{"name":"run","arguments":"{}"}}]}]}`)
+	if got := Inject("chat-completions", chat, Failover("a", "b", "failover")); string(got) != string(chat) {
+		t.Fatalf("appended after an unanswered tool call: %s", got)
+	}
+
+	responses := []byte(`{"input":[{"type":"function_call","call_id":"call-1","name":"run","arguments":"{}"}]}`)
+	if got := Inject("responses", responses, Failover("a", "b", "failover")); string(got) != string(responses) {
+		t.Fatalf("appended after an unanswered function call: %s", got)
+	}
+}
+
+func TestInjectLeavesAnthropicAndOtherFormatsUntouched(t *testing.T) {
+	body := []byte(`{"messages":[{"role":"user","content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"boom"}]}]}`)
+	for _, format := range []string{"anthropic", "claude", "gemini", ""} {
+		if got := Inject(format, body, Failover("a", "b", "failover")); string(got) != string(body) {
+			t.Fatalf("format %q was rewritten: %s", format, got)
+		}
+	}
+}
+
 func contains(haystack, needle string) bool {
 	return len(haystack) >= len(needle) && (haystack == needle || indexOf(haystack, needle) >= 0)
 }

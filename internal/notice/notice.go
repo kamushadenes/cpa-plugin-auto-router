@@ -35,8 +35,12 @@ func Capability(previousModel, effectiveModel, reason string) string {
 
 // Inject returns body with text appended as a trailing user turn, in the
 // request's own format. The body is returned unchanged when the format is not
-// supported, the JSON does not parse, the expected turn list is absent, or the
-// text is empty, so a request never degrades into an invalid shape.
+// supported, the JSON does not parse, the expected turn list is absent, the text
+// is empty, or the last turn still has unanswered tool calls, so a request never
+// degrades into an invalid shape and no provider invariant is broken.
+//
+// Only the two formats this executor registers are handled: `chat-completions`
+// and `responses`. Anthropic and every other format pass through untouched.
 func Inject(sourceFormat string, body []byte, text string) []byte {
 	if strings.TrimSpace(text) == "" {
 		return body
@@ -69,7 +73,7 @@ func Inject(sourceFormat string, body []byte, text string) []byte {
 	}
 
 	turns, ok := root[key].([]any)
-	if !ok {
+	if !ok || hasUnansweredToolCalls(turns) {
 		return body
 	}
 	root[key] = append(turns, turn)
@@ -79,4 +83,48 @@ func Inject(sourceFormat string, body []byte, text string) []byte {
 		return body
 	}
 	return updated
+}
+
+// hasUnansweredToolCalls reports whether the turn list ends with tool calls that
+// no result answers yet. Appending a user turn there would separate a call from
+// its result, which providers reject, so the caller must leave the body alone.
+func hasUnansweredToolCalls(turns []any) bool {
+	answered := make(map[string]bool)
+	issued := make(map[string]bool)
+	for _, raw := range turns {
+		turn, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if calls, ok := turn["tool_calls"].([]any); ok {
+			for _, rawCall := range calls {
+				if call, ok := rawCall.(map[string]any); ok {
+					if id, ok := call["id"].(string); ok && id != "" {
+						issued[id] = true
+					}
+				}
+			}
+		}
+		switch turn["type"] {
+		case "function_call", "custom_tool_call":
+			if id, ok := turn["call_id"].(string); ok && id != "" {
+				issued[id] = true
+			}
+		case "function_call_output", "custom_tool_call_output":
+			if id, ok := turn["call_id"].(string); ok && id != "" {
+				answered[id] = true
+			}
+		}
+		if turn["role"] == "tool" {
+			if id, ok := turn["tool_call_id"].(string); ok && id != "" {
+				answered[id] = true
+			}
+		}
+	}
+	for id := range issued {
+		if !answered[id] {
+			return true
+		}
+	}
+	return false
 }

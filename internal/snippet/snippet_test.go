@@ -87,6 +87,61 @@ func TestExtractIgnoresUncorrelatedToolErrors(t *testing.T) {
 	}
 }
 
+// Envelopes below were captured on hermes-lab from a real Hermes turn against a
+// disposable recorder: the terminal tool returns a JSON string in content.
+func TestExtractCountsCapturedHermesTerminalFailures(t *testing.T) {
+	body := []byte(`{"messages":[` +
+		`{"role":"assistant","tool_calls":[{"id":"c1"},{"id":"c2"},{"id":"c3"}]},` +
+		`{"role":"tool","tool_call_id":"c1","content":"{\"output\": \"\", \"exit_code\": 7, \"error\": null}"},` +
+		`{"role":"tool","tool_call_id":"c2","content":"{\"output\": \"\", \"exit_code\": 7, \"error\": null}"},` +
+		`{"role":"tool","tool_call_id":"c3","content":"{\"output\": \"\", \"exit_code\": 7, \"error\": null}"}]}`)
+	_, sig := Extract("chat-completions", body, 100)
+	if sig.ToolErrorStreak != 3 {
+		t.Fatalf("captured failure envelope not detected: streak = %d", sig.ToolErrorStreak)
+	}
+}
+
+func TestExtractIgnoresCapturedHermesTerminalSuccess(t *testing.T) {
+	body := []byte(`{"messages":[` +
+		`{"role":"assistant","tool_calls":[{"id":"c1"},{"id":"c2"},{"id":"c3"}]},` +
+		`{"role":"tool","tool_call_id":"c1","content":"{\"output\": \"\", \"exit_code\": 0, \"error\": null}"},` +
+		`{"role":"tool","tool_call_id":"c2","content":"{\"output\": \"\", \"exit_code\": 0, \"error\": null}"},` +
+		`{"role":"tool","tool_call_id":"c3","content":"{\"output\": \"\", \"exit_code\": 0, \"error\": null}"}]}`)
+	_, sig := Extract("chat-completions", body, 100)
+	if sig.ToolErrorStreak != 0 {
+		t.Fatalf("captured success envelope counted as failure: streak = %d", sig.ToolErrorStreak)
+	}
+}
+
+func TestExtractCountsStructuredFailureInResponsesOutput(t *testing.T) {
+	body := []byte(`{"input":[` +
+		`{"type":"function_call","call_id":"c1","name":"terminal","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"c1","output":"{\"output\": \"\", \"exit_code\": 7, \"error\": null}"}]}`)
+	_, sig := Extract("responses", body, 100)
+	if sig.ToolErrorStreak != 1 {
+		t.Fatalf("responses structured failure not detected: streak = %d", sig.ToolErrorStreak)
+	}
+}
+
+func TestExtractIgnoresNonFailureMarkersAndUserDocuments(t *testing.T) {
+	cases := map[string]string{
+		"error false":        `{"role":"tool","tool_call_id":"c1","content":"x","error":false}`,
+		"error zero":         `{"role":"tool","tool_call_id":"c1","content":"x","error":0}`,
+		"error empty string": `{"role":"tool","tool_call_id":"c1","content":"x","error":""}`,
+		"error empty object": `{"role":"tool","tool_call_id":"c1","content":"x","error":{}}`,
+		"error empty array":  `{"role":"tool","tool_call_id":"c1","content":"x","error":[]}`,
+		"user document":      `{"role":"tool","tool_call_id":"c1","content":"{\"error\": \"field in the user's own document\"}"}`,
+		"exit code zero":     `{"role":"tool","tool_call_id":"c1","content":"{\"output\": \"\", \"exit_code\": 0, \"error\": null}"}`,
+		"no exit code":       `{"role":"tool","tool_call_id":"c1","content":"{\"output\": \"text\"}"}`,
+	}
+	for name, result := range cases {
+		body := []byte(`{"messages":[{"role":"assistant","tool_calls":[{"id":"c1"}]},` + result + `]}`)
+		if _, sig := Extract("chat-completions", body, 100); sig.ToolErrorStreak != 0 {
+			t.Fatalf("%s: counted as a failure", name)
+		}
+	}
+}
+
 func TestExtractResetsToolErrorStreakAfterProgress(t *testing.T) {
 	body := []byte(`{"messages":[` +
 		`{"role":"assistant","tool_calls":[{"id":"c1"},{"id":"c2"},{"id":"c3"},{"id":"c4"}]},` +

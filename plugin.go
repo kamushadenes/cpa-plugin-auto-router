@@ -287,6 +287,9 @@ type routeContext struct {
 	estTokens            int
 	previousModel        string
 	errorBumped          bool
+	// transitionReason is the routing reason before the executor path rewrites
+	// it to "reclassified", so a notice reports why the model actually changed.
+	transitionReason string
 }
 
 func routeModel(raw []byte) ([]byte, error) {
@@ -472,7 +475,7 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 		return decide.Decision{}, routeMeta{}, routeContext{}, err
 	}
 	decision.State.ErrorEpisode = episode
-	return decision, meta, routeContext{category: category, factors: meta.factors, effortP: meta.effortP, effortMean: meta.effortMean, difficulty: difficulty, categoryConfidence: meta.categoryConfidence, difficultyConfidence: meta.difficultyConfidence, confidence: meta.confidence, jevMillis: meta.jevMillis, hasImage: signals.Images > 0, estTokens: estTokens, previousModel: prev.Model, errorBumped: bumped}, nil
+	return decision, meta, routeContext{category: category, factors: meta.factors, effortP: meta.effortP, effortMean: meta.effortMean, difficulty: difficulty, categoryConfidence: meta.categoryConfidence, difficultyConfidence: meta.difficultyConfidence, confidence: meta.confidence, jevMillis: meta.jevMillis, hasImage: signals.Images > 0, estTokens: estTokens, previousModel: prev.Model, errorBumped: bumped, transitionReason: decision.Reason}, nil
 }
 
 func routeResponse(callbackID, sid string, decision decide.Decision, meta routeMeta) ([]byte, error) {

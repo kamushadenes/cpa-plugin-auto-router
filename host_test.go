@@ -158,7 +158,7 @@ func configureFailoverHostTest(t *testing.T) {
 	t.Helper()
 	t.Setenv("TEST_JEV_KEY", "")
 	path := t.TempDir() + "/models.yaml"
-	raw := []byte("benchmarks:\n  arena-overall: {source: test, unit: elo}\nmodels:\n  first:\n    tier: mid\n    vision: true\n    cost: {input: 1, output: 1}\n    scores: {}\n  second:\n    tier: mid\n    vision: true\n    cost: {input: 2, output: 2}\n    scores: {}\n  third:\n    tier: mid\n    vision: true\n    cost: {input: 3, output: 3}\n    scores: {}\n")
+	raw := []byte("benchmarks:\n  arena-overall: {source: test, unit: elo}\nmodels:\n  first:\n    tier: mid\n    vision: true\n    cost: {input: 1, output: 1}\n    scores: {}\n  second:\n    tier: mid\n    vision: true\n    cost: {input: 2, output: 2}\n    scores: {}\n  third:\n    tier: mid\n    vision: true\n    cost: {input: 3, output: 3}\n    scores: {}\n  promoted:\n    tier: top\n    vision: true\n    cost: {input: 9, output: 9}\n    scores: {}\n")
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -540,6 +540,53 @@ func TestRetryBodySelectsNoticeByTransitionKind(t *testing.T) {
 
 	if string(req.OriginalRequest) != string(original) {
 		t.Fatalf("original request body was mutated: %s", req.OriginalRequest)
+	}
+}
+
+func TestToolErrorBumpNoticeReachesFirstPromotedAttempt(t *testing.T) {
+	configureFailoverHostTest(t)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.executeResponses["promoted"] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusOK, Body: []byte(`{"ok":true}`)}
+
+	headers := http.Header{"X-Session-ID": []string{"bump-notice-session"}}
+	_, _, generation := store.Begin("bump-notice-session")
+	store.Put("bump-notice-session", generation, decide.State{
+		Difficulty: decide.Routine, Model: "first", Thinking: "high", Tier: "mid",
+	})
+
+	// Three correlated failures in the captured hermes-lab envelope shape.
+	body := []byte(`{"messages":[{"role":"user","content":"fix the build"},` +
+		`{"role":"assistant","tool_calls":[{"id":"c1"},{"id":"c2"},{"id":"c3"}]},` +
+		`{"role":"tool","tool_call_id":"c1","content":"{\"output\": \"\", \"exit_code\": 7, \"error\": null}"},` +
+		`{"role":"tool","tool_call_id":"c2","content":"{\"output\": \"\", \"exit_code\": 7, \"error\": null}"},` +
+		`{"role":"tool","tool_call_id":"c3","content":"{\"output\": \"\", \"exit_code\": 7, \"error\": null}"}]}`)
+
+	executor := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		Model: pluginIdentifier, SourceFormat: "chat-completions", OriginalRequest: body, Headers: headers,
+	}}
+	raw, err := json.Marshal(executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := execute(raw); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.executeBodies) == 0 {
+		t.Fatal("no host execute call recorded")
+	}
+	sent := fake.executeBodies[0]
+	messages := gjson.GetBytes(sent, "messages").Array()
+	last := messages[len(messages)-1]
+	if last.Get("role").String() != "user" {
+		t.Fatalf("first promoted attempt has no appended notice: %s", sent)
+	}
+	text := last.Get("content").String()
+	if !strings.Contains(text, "tool-error-bump") || !strings.Contains(text, "moved from first") {
+		t.Fatalf("bump notice text = %q", text)
+	}
+	if strings.Contains(text, "did not complete") {
+		t.Fatalf("bump notice claims a transport failure: %q", text)
 	}
 }
 

@@ -19,7 +19,7 @@ Scope: bounded transient-failure failover, a tier header, a model-change notice 
 
 ## What counts as a tool failure
 
-Only structural markers on the tool result: `is_error: true`, `status` of `failed` or `error`, or a non-empty `error` field. Free-form text is never read as failure, so an unmarked `{"error": ...}` payload, a message that merely mentions an error, and ordinary user text are all inert. A result that answers no call issued in the same request is ignored. Marked failures naming authentication, permission, quota, or billing problems are excluded because no tier resolves them.
+A structural declaration on the tool result: `is_error: true`, a `status` of `failed` or `error`, a non-empty `error` field, or a tool execution envelope whose numeric `exit_code` is non-zero. Prose is never read, so a message that merely mentions an error is inert, and `error` values of `null`, `false`, `0`, `""`, `{}` and `[]` all mean no failure. The execution envelope must carry both `output` and a numeric `exit_code`, so a user document containing an `error` key cannot masquerade as execution metadata. A result answering no call issued in the same request is ignored, and marked failures naming authentication, permission, quota or billing problems are excluded because no tier resolves them.
 
 ## Verification
 
@@ -31,10 +31,19 @@ Only structural markers on the tool result: `is_error: true`, `status` of `faile
 - `internal/snippet` covers marked streaks in both formats, uncorrelated results, unmarked error text, successful output, user text mentioning errors, access failures, an explicit `is_error: false`, and reset after progress.
 - `plugin_test.go` covers the latch: below threshold does not raise, the threshold raises one band once, a longer run of the same episode does not raise again, a new episode raises once more, and unmarked results clear the latch without demoting.
 - `host_test.go` covers notice selection: unchanged sessions and same-model routes are untouched, a capability move and a failover retry produce different wording, the first attempt carries no failover notice on either the buffered or streaming path, and the original body is unmutated.
+- `host_test.go` also proves the tool-error raise reaches the first promoted attempt: a session on `first` with three captured failure envelopes promotes to the top tier and the body sent to that model carries a `tool-error-bump` notice.
+- Review blockers fixed in this pass: the executor path now preserves the pre-rewrite transition reason so a promotion no longer loses its notice; `fallback` and `vision-swap` are treated as model changes; `notice.Inject` refuses to append after unanswered tool calls; Anthropic and every other unregistered format pass through untouched, with tests for each.
 
-## Client coverage caveat
+## Lab wire receipt
 
-The detector is proven against fixtures for the two formats this executor accepts. Whether OMP or Hermes emits these markers on the wire was not observed in the lab, so real-client coverage is unverified. A client that reports failures only as text never raises difficulty.
+The envelope was captured on hermes-lab (10.23.23.144), not assumed. A disposable recorder on `127.0.0.1:8399` served a fresh `HERMES_HOME` under `/tmp/wire-probe`, answered the first real turn with one `terminal` tool call, and logged the follow-up request.
+
+- Failing command: tool message keys `['content', 'role', 'tool_call_id']`, content `{"output": "", "exit_code": 7, "error": null}`.
+- Passing command: the same keys, content `{"output": "", "exit_code": 0, "error": null}`.
+
+Both captures are encoded verbatim as fixtures. No production service, credential or endpoint was touched; the recorder and its home were disposable and the recorder was stopped afterwards.
+
+OMP's wire shape was not captured in this pass, so its coverage remains unverified and is not claimed. A client that reports failures only as prose never raises difficulty.
 
 ## Race investigation
 

@@ -315,6 +315,7 @@ func decisionForExecutorWithContext(req rpcExecutorRequest) (decide.Decision, ro
 			return decide.Decision{}, routeContext{}, 0, err
 		}
 	}
+	routeCtx.transitionReason = decision.Reason
 	if decision.Reason != "context_overflow_risk" {
 		decision.Reason = "reclassified"
 		decision.Choice.Reason = "reclassified"
@@ -351,22 +352,28 @@ func retryBody(req rpcExecutorRequest, failed []string, decision decide.Decision
 		return notice.Inject(req.SourceFormat, req.OriginalRequest,
 			notice.Failover(failed[len(failed)-1], decision.Model, "failover"))
 	}
-	if !capabilityTransition(decision.Reason) || routeCtx.previousModel == "" || routeCtx.previousModel == decision.Model {
-		return req.OriginalRequest
+	reason := routeCtx.transitionReason
+	if reason == "" {
+		reason = decision.Reason
 	}
-	reason := decision.Reason
 	if routeCtx.errorBumped {
 		reason = "tool-error-bump"
+	}
+	if !capabilityTransition(reason) || routeCtx.previousModel == "" || routeCtx.previousModel == decision.Model {
+		return req.OriginalRequest
 	}
 	return notice.Inject(req.SourceFormat, req.OriginalRequest,
 		notice.Capability(routeCtx.previousModel, decision.Model, reason))
 }
 
 // capabilityTransition reports whether a routing reason means the session moved
-// to a different model for capability or availability, not transport retry.
+// to a different model. "fallback" and "vision-swap" change the model just as an
+// escalation does, so they are included. "escalate-thinking" and "keep" hold the
+// same model, and the caller's model comparison filters them out anyway.
 func capabilityTransition(reason string) bool {
 	switch reason {
-	case "escalate-tier", "model-gone", "context_overflow_risk":
+	case "escalate-tier", "model-gone", "fallback", "vision-swap",
+		"context_overflow_risk", "tool-error-bump":
 		return true
 	default:
 		return false

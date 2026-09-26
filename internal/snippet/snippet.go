@@ -31,20 +31,53 @@ var notCapability = []string{
 	"credential", "api key", "token expired", "quota", "billing", "payment",
 }
 
+// executionEnvelopeFailure reports a non-zero exit from a tool execution
+// envelope. hermes-lab captures show the terminal tool returning
+// {"output":..., "exit_code":N, "error":null} as a JSON string, so both the
+// output and the numeric exit_code must be present before the code is read.
+// Requiring that shape keeps a user document that merely contains an "error"
+// key from masquerading as execution metadata.
+func executionEnvelopeFailure(payload gjson.Result) bool {
+	if !payload.IsObject() || !payload.Get("output").Exists() {
+		return false
+	}
+	code := payload.Get("exit_code")
+	return code.Type == gjson.Number && code.Int() != 0
+}
+
+// meaningfulError reports whether an error field carries an actual complaint.
+// null, false, 0, "", {} and [] are all absence of failure.
+func meaningfulError(value gjson.Result) bool {
+	switch value.Type {
+	case gjson.String:
+		return strings.TrimSpace(value.String()) != ""
+	case gjson.JSON:
+		raw := strings.TrimSpace(value.Raw)
+		return raw != "{}" && raw != "[]"
+	default:
+		return false
+	}
+}
+
 // explicitToolError reports whether a tool result declares failure through a
-// structured field rather than through its text.
+// structured field, either on the result itself or inside its JSON payload.
+// Prose is never inspected, so a message that merely mentions an error is inert.
 func explicitToolError(item gjson.Result) (marked bool, counts bool) {
 	flag := item.Get("is_error")
 	status := strings.ToLower(strings.TrimSpace(item.Get("status").String()))
 	errorField := item.Get("error")
+	content := item.Get("content")
+	output := item.Get("output")
 	switch {
 	case flag.Exists() && flag.Type == gjson.True:
 	case status == "failed" || status == "error":
-	case errorField.Exists() && errorField.Type != gjson.Null && errorField.Raw != "{}" && errorField.String() != "":
+	case meaningfulError(errorField):
+	case executionEnvelopeFailure(gjson.Parse(content.String())):
+	case executionEnvelopeFailure(gjson.Parse(output.String())):
 	default:
 		return false, false
 	}
-	text := strings.ToLower(contentText(item.Get("content")) + " " + item.Get("output").String() + " " + errorField.String())
+	text := strings.ToLower(contentText(content) + " " + output.String() + " " + errorField.String())
 	for _, marker := range notCapability {
 		if strings.Contains(text, marker) {
 			return true, false
