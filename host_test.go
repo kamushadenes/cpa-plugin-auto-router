@@ -438,6 +438,9 @@ func TestExecuteRetriesBuffered429WithDifferentModelAndPersistsSession(t *testin
 		t.Fatalf("execute envelope = %#v, response = %#v", env, response)
 	}
 	assertFailoverHeader(t, response.Headers.Get("X-Auto-Router"), "second", []string{"first"})
+	if got := response.Headers.Get("X-Auto-Router-Tier"); got != "mid" {
+		t.Fatalf("X-Auto-Router-Tier = %q, want mid", got)
+	}
 	if len(fake.executeModels) != 2 {
 		t.Fatalf("host execute models = %#v", fake.executeModels)
 	}
@@ -493,6 +496,9 @@ func TestExecuteStreamRetries429BeforeFirstChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertFailoverHeader(t, result.Headers.Get("X-Auto-Router"), "second", []string{"first"})
+	if got := result.Headers.Get("X-Auto-Router-Tier"); got != "mid" {
+		t.Fatalf("X-Auto-Router-Tier = %q, want mid", got)
+	}
 	closeRequest := waitPluginClose(t, fake)
 	if closeRequest.Error != "" {
 		t.Fatalf("plugin stream close error = %q", closeRequest.Error)

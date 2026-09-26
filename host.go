@@ -186,6 +186,7 @@ func execute(raw []byte) ([]byte, error) {
 					headers.Set("Content-Type", contentTypeFor(req.SourceFormat, false))
 				}
 				headers.Set("X-Auto-Router", effectiveRouterHeader(model, decision, failed))
+				headers.Set("X-Auto-Router-Tier", decision.Tier)
 				if len(failed) > 0 {
 					logFailover(req, decision, routeCtx, failed)
 				}
@@ -272,8 +273,9 @@ func executeStream(raw []byte) ([]byte, error) {
 		closePluginStream(pluginStreamID, "")
 	}(ready)
 	headers := http.Header{
-		"Content-Type":  []string{contentTypeFor(req.SourceFormat, true)},
-		"X-Auto-Router": []string{effectiveRouterHeader(model, decision, failed)},
+		"Content-Type":       []string{contentTypeFor(req.SourceFormat, true)},
+		"X-Auto-Router":      []string{effectiveRouterHeader(model, decision, failed)},
+		"X-Auto-Router-Tier": []string{decision.Tier},
 	}
 	return okEnvelope(map[string]any{"headers": headers})
 }
