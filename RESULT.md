@@ -27,7 +27,9 @@ All commands ran in the isolated worktree unless stated otherwise.
 - OMP native CLI import and inference: `timeout 45s omp -p --no-session --no-tools --extension integrations/omp/auto-router-handoff.mjs --model gpt-5.6-sol "Reply exactly ok"`; returned `ok`.
 - Hermes lab plugin doctor: passed on `hermes@10.23.23.144`; manifest loaded and 2 hooks registered.
 - Hermes lab native inference: `timeout 90s hermes -z "Reply exactly ok"`; returned `ok`.
-- OMP bounded compaction probe output: `{"idle":false,"pending":false,"compact":"error","error":"Compaction cancelled"}`. No automatic OMP compaction is claimed.
+- OMP bounded `agent_end` compaction probe: `{"idle":false,"pending":false,"compact":"error","error":"Compaction cancelled"}`.
+- OMP bounded `before_provider_request` compaction probe: `{"idle":false,"pending":false,"compact":"error","error":"Nothing to compact (session too small)"}`; the process aborted after the probe. A deferred `agent_end` callback produced no evidence file before process exit.
+- No OMP context replacement implementation was retained: deterministic tail extraction and one-user-message rewriting were rejected as lossy and unsafe for tool history.
 
 ## Lab surface and model evidence
 
@@ -39,7 +41,8 @@ All commands ran in the isolated worktree unless stated otherwise.
 ## Remaining gates
 
 - The Coding Agent repository must explicitly enroll the OMP extension in its global extension allowlist. A loose file is not auto-loaded.
-- Hermes currently exposes `response_model` but not router headers or reason in the documented hooks. Hermes support is guidance-only and does not claim compaction.
+- OMP automatic pre-generation compaction remains blocked. The public `context` replacement hook is request-only, but a safe semantic summary requires the native summarizer; the tested extension lifecycle did not provide a verified transaction boundary to run it before the promoted request.
+- Hermes automatic compaction remains blocked. The public `register_context_engine` seam exists, but replacing the configured built-in compressor without preserving its full construction/session lifecycle would be unsafe; documented request hooks expose no confirmed router tier/reason pair. Hermes remains guidance-only.
 - Conservative loop escalation was not enabled. The inspected protocols do not provide one uniform, reliable explicit failure signal across chat-completions, Anthropic, OpenAI tool messages, and Responses without provider-specific parsing. Repeated calls alone are insufficient; stale or arbitrary error-shaped output must not escalate.
 - Lab router acceptance remains blocked until an authorized lab router endpoint is available. No credentials were copied and no production endpoint was mutated.
 
