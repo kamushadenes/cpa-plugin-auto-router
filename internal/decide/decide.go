@@ -314,6 +314,10 @@ type State struct {
 	Model      string
 	Thinking   string
 	Tier       string
+	// ErrorEpisode is the trailing tool-failure run that already raised
+	// difficulty in this session, identified by the call it started with. The
+	// same run never raises twice; a run that starts elsewhere can raise once.
+	ErrorEpisode string
 }
 
 type Decision struct {

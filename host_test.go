@@ -15,6 +15,7 @@ import (
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/session"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/tidwall/gjson"
 )
 
 type fakeStreamRead struct {
@@ -31,7 +32,9 @@ type fakeHostCalls struct {
 	streamReads      map[string][]fakeStreamRead
 
 	executeModels []string
+	executeBodies [][]byte
 	streamModels  []string
+	streamBodies  [][]byte
 	hostCloses    []string
 	emits         []string
 	pluginCloses  chan rpcStreamCloseRequest
@@ -60,6 +63,7 @@ func (f *fakeHostCalls) call(method string, payload any) (json.RawMessage, error
 		}
 		model := stripThinkingSuffix(req.Model)
 		f.executeModels = append(f.executeModels, req.Model)
+		f.executeBodies = append(f.executeBodies, req.Body)
 		if err := f.executeErrors[model]; err != nil {
 			return nil, err
 		}
@@ -76,6 +80,7 @@ func (f *fakeHostCalls) call(method string, payload any) (json.RawMessage, error
 		}
 		model := stripThinkingSuffix(req.Model)
 		f.streamModels = append(f.streamModels, req.Model)
+		f.streamBodies = append(f.streamBodies, req.Body)
 		response, ok := f.streamResponses[model]
 		if !ok {
 			return nil, fmt.Errorf("no stream response for %s", model)
@@ -153,7 +158,7 @@ func configureFailoverHostTest(t *testing.T) {
 	t.Helper()
 	t.Setenv("TEST_JEV_KEY", "")
 	path := t.TempDir() + "/models.yaml"
-	raw := []byte("benchmarks:\n  arena-overall: {source: test, unit: elo}\nmodels:\n  first:\n    tier: mid\n    vision: true\n    cost: {input: 1, output: 1}\n    scores: {}\n  second:\n    tier: mid\n    vision: true\n    cost: {input: 2, output: 2}\n    scores: {}\n  third:\n    tier: mid\n    vision: true\n    cost: {input: 3, output: 3}\n    scores: {}\n")
+	raw := []byte("benchmarks:\n  arena-overall: {source: test, unit: elo}\nmodels:\n  first:\n    tier: mid\n    vision: true\n    cost: {input: 1, output: 1}\n    scores: {}\n  second:\n    tier: mid\n    vision: true\n    cost: {input: 2, output: 2}\n    scores: {}\n  third:\n    tier: mid\n    vision: true\n    cost: {input: 3, output: 3}\n    scores: {}\n  promoted:\n    tier: top\n    vision: true\n    cost: {input: 9, output: 9}\n    scores: {}\n")
 	if err := os.WriteFile(path, raw, 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -438,6 +443,9 @@ func TestExecuteRetriesBuffered429WithDifferentModelAndPersistsSession(t *testin
 		t.Fatalf("execute envelope = %#v, response = %#v", env, response)
 	}
 	assertFailoverHeader(t, response.Headers.Get("X-Auto-Router"), "second", []string{"first"})
+	if got := response.Headers.Get("X-Auto-Router-Tier"); got != "mid" {
+		t.Fatalf("X-Auto-Router-Tier = %q, want mid", got)
+	}
 	if len(fake.executeModels) != 2 {
 		t.Fatalf("host execute models = %#v", fake.executeModels)
 	}
@@ -446,6 +454,140 @@ func TestExecuteRetriesBuffered429WithDifferentModelAndPersistsSession(t *testin
 		t.Fatalf("effective session state = %#v, present=%v", state, ok)
 	}
 	assertFailoverLog(t, fake, "second", []string{"first"})
+}
+
+func TestRetryBodyCarriesModelChangeNoticeOnlyAfterFailure(t *testing.T) {
+	configureFailoverHostTest(t)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.executeResponses["first"] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusTooManyRequests, Body: []byte(`{"error":"rate limit"}`)}
+	fake.executeResponses["second"] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusOK, Body: []byte(`{"ok":true}`)}
+
+	if _, err := execute(seedHostDecision(t, "notice-session", "first")); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.executeBodies) != 2 {
+		t.Fatalf("host execute bodies = %d, want 2", len(fake.executeBodies))
+	}
+	if strings.Contains(string(fake.executeBodies[0]), "Router note") {
+		t.Fatalf("first attempt carried a notice: %s", fake.executeBodies[0])
+	}
+	messages := gjson.GetBytes(fake.executeBodies[1], "messages").Array()
+	if len(messages) != 2 {
+		t.Fatalf("retry messages = %d, want 2: %s", len(messages), fake.executeBodies[1])
+	}
+	appended := messages[1]
+	if appended.Get("role").String() != "user" {
+		t.Fatalf("retry turn = %s", appended.Raw)
+	}
+	text := appended.Get("content").String()
+	if !strings.Contains(text, "first") || !strings.Contains(text, "second") || !strings.Contains(text, "failover") {
+		t.Fatalf("retry notice = %q", text)
+	}
+}
+
+func TestStreamRetryBodyCarriesModelChangeNotice(t *testing.T) {
+	configureFailoverHostTest(t)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.streamResponses["first"] = pluginapi.HostModelStreamResponse{StatusCode: http.StatusTooManyRequests, StreamID: "stream-first"}
+	fake.streamResponses["second"] = pluginapi.HostModelStreamResponse{StatusCode: http.StatusOK, StreamID: "stream-second"}
+	fake.streamReads["stream-second"] = []fakeStreamRead{{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: ok\n\n"), Done: true}}}
+
+	if _, err := executeStream(seedHostDecision(t, "notice-stream-session", "first", "plugin-stream-notice")); err != nil {
+		t.Fatal(err)
+	}
+	waitPluginClose(t, fake)
+	if len(fake.streamBodies) != 2 {
+		t.Fatalf("host stream bodies = %d, want 2", len(fake.streamBodies))
+	}
+	if strings.Contains(string(fake.streamBodies[0]), "Router note") {
+		t.Fatalf("first stream attempt carried a notice: %s", fake.streamBodies[0])
+	}
+	if !strings.Contains(string(fake.streamBodies[1]), "Router note") {
+		t.Fatalf("stream retry missing notice: %s", fake.streamBodies[1])
+	}
+}
+
+func TestRetryBodySelectsNoticeByTransitionKind(t *testing.T) {
+	original := []byte(`{"messages":[{"role":"user","content":"keep going"}]}`)
+	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		SourceFormat: "chat-completions", OriginalRequest: original,
+	}}
+	decision := decide.Decision{Choice: decide.Choice{Model: "top-model"}, Reason: "escalate-tier"}
+
+	if got := retryBody(req, nil, decide.Decision{Choice: decide.Choice{Model: "same"}, Reason: "keep"}, routeContext{previousModel: "same"}); string(got) != string(original) {
+		t.Fatalf("unchanged session was rewritten: %s", got)
+	}
+	if got := retryBody(req, nil, decision, routeContext{previousModel: "top-model"}); string(got) != string(original) {
+		t.Fatalf("same model was rewritten: %s", got)
+	}
+
+	capability := retryBody(req, nil, decision, routeContext{previousModel: "mid-model"})
+	capabilityText := gjson.GetBytes(capability, "messages.1.content").String()
+	if !strings.Contains(capabilityText, "moved from mid-model to top-model") || !strings.Contains(capabilityText, "escalate-tier") {
+		t.Fatalf("capability notice = %q", capabilityText)
+	}
+	if strings.Contains(capabilityText, "did not complete") {
+		t.Fatalf("capability notice claims a transport failure: %q", capabilityText)
+	}
+
+	failover := retryBody(req, []string{"mid-model"}, decision, routeContext{previousModel: "mid-model"})
+	failoverText := gjson.GetBytes(failover, "messages.1.content").String()
+	if !strings.Contains(failoverText, "did not complete") || strings.Contains(failoverText, "moved from") {
+		t.Fatalf("failover notice = %q", failoverText)
+	}
+
+	if string(req.OriginalRequest) != string(original) {
+		t.Fatalf("original request body was mutated: %s", req.OriginalRequest)
+	}
+}
+
+func TestToolErrorBumpNoticeReachesFirstPromotedAttempt(t *testing.T) {
+	configureFailoverHostTest(t)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.executeResponses["promoted"] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusOK, Body: []byte(`{"ok":true}`)}
+
+	headers := http.Header{"X-Session-ID": []string{"bump-notice-session"}}
+	_, _, generation := store.Begin("bump-notice-session")
+	store.Put("bump-notice-session", generation, decide.State{
+		Difficulty: decide.Routine, Model: "first", Thinking: "high", Tier: "mid",
+	})
+
+	// Three correlated failures in the captured hermes-lab envelope shape.
+	body := []byte(`{"messages":[{"role":"user","content":"fix the build"},` +
+		`{"role":"assistant","tool_calls":[{"id":"c1"},{"id":"c2"},{"id":"c3"}]},` +
+		`{"role":"tool","tool_call_id":"c1","content":"{\"output\": \"\", \"exit_code\": 7, \"error\": null}"},` +
+		`{"role":"tool","tool_call_id":"c2","content":"{\"output\": \"\", \"exit_code\": 7, \"error\": null}"},` +
+		`{"role":"tool","tool_call_id":"c3","content":"{\"output\": \"\", \"exit_code\": 7, \"error\": null}"}]}`)
+
+	executor := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		Model: pluginIdentifier, SourceFormat: "chat-completions", OriginalRequest: body, Headers: headers,
+	}}
+	raw, err := json.Marshal(executor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := execute(raw); err != nil {
+		t.Fatal(err)
+	}
+	if len(fake.executeBodies) == 0 {
+		t.Fatal("no host execute call recorded")
+	}
+	sent := fake.executeBodies[0]
+	messages := gjson.GetBytes(sent, "messages").Array()
+	last := messages[len(messages)-1]
+	if last.Get("role").String() != "user" {
+		t.Fatalf("first promoted attempt has no appended notice: %s", sent)
+	}
+	text := last.Get("content").String()
+	if !strings.Contains(text, "tool-error-bump") || !strings.Contains(text, "moved from first") {
+		t.Fatalf("bump notice text = %q", text)
+	}
+	if strings.Contains(text, "did not complete") {
+		t.Fatalf("bump notice claims a transport failure: %q", text)
+	}
 }
 
 func TestExecuteRetriesTransportMarkerError(t *testing.T) {
@@ -493,6 +635,9 @@ func TestExecuteStreamRetries429BeforeFirstChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertFailoverHeader(t, result.Headers.Get("X-Auto-Router"), "second", []string{"first"})
+	if got := result.Headers.Get("X-Auto-Router-Tier"); got != "mid" {
+		t.Fatalf("X-Auto-Router-Tier = %q, want mid", got)
+	}
 	closeRequest := waitPluginClose(t, fake)
 	if closeRequest.Error != "" {
 		t.Fatalf("plugin stream close error = %q", closeRequest.Error)
@@ -687,6 +832,10 @@ func TestRetryableHostFailureAllowlist(t *testing.T) {
 		{name: "status 503", status: http.StatusServiceUnavailable, want: true},
 		{name: "status 529", status: 529, want: true},
 		{name: "stream closed before done", err: "upstream stream closed before [DONE]", want: true},
+		{name: "request timeout", err: "request_timeout", want: true},
+		{name: "stream stalled", err: "stream stalled", want: true},
+		{name: "request timeout with invalid request", err: "request_timeout: invalid_request_error", want: false},
+		{name: "stream stalled with authentication", err: "stream_stalled: authentication_error", want: false},
 		{name: "authentication error", err: `{"type":"error","error":{"type":"authentication_error","message":"OAuth access token has been revoked."}}`, want: false},
 		{name: "invalid request error", err: `{"type":"error","error":{"type":"invalid_request_error","message":"bad input"}}`, want: false},
 		{name: "unknown error", err: "upstream disconnected", want: false},

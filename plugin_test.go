@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -889,5 +890,67 @@ func TestReconcileRouteDecisionRechecksEstimate(t *testing.T) {
 	}
 	if got.Model != "blind" || got.Tier != "top" || got.Thinking != "xhigh" || !got.ContextFiltered {
 		t.Fatalf("reconcile must re-check the estimate against the effective model: %+v", got)
+	}
+}
+
+func toolErrorBody(t *testing.T, prefix string, count int, marked bool) []byte {
+	t.Helper()
+	calls := make([]string, 0, count)
+	results := make([]string, 0, count)
+	for i := range count {
+		id := fmt.Sprintf("%s-%d", prefix, i)
+		calls = append(calls, fmt.Sprintf(`{"id":%q}`, id))
+		flag := ""
+		if marked {
+			flag = `,"is_error":true`
+		}
+		results = append(results, fmt.Sprintf(`{"role":"tool","tool_call_id":%q,"content":"exit 1"%s}`, id, flag))
+	}
+	body := `{"messages":[{"role":"user","content":"fix the failing build"},{"role":"assistant","tool_calls":[` +
+		strings.Join(calls, ",") + `]},` + strings.Join(results, ",") + `]}`
+	return []byte(body)
+}
+
+func TestRepeatedMarkedToolErrorsRaiseDifficultyOncePerEpisode(t *testing.T) {
+	configureTest(t)
+	store = session.New(time.Hour, 65536)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	headers := http.Header{"X-Session-ID": []string{"bump-session"}}
+	_, _, generation := store.Begin("bump-session")
+	store.Put("bump-session", generation, decide.State{Difficulty: decide.Routine, Model: "blind", Thinking: "high", Tier: "mid"})
+
+	route := func(body []byte) decide.State {
+		t.Helper()
+		request := pluginapi.ModelRouteRequest{
+			RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Headers: headers, Body: body,
+		}
+		if _, err := routeModel(marshalRoute(t, request)); err != nil {
+			t.Fatal(err)
+		}
+		state, ok := store.Get("bump-session")
+		if !ok {
+			t.Fatal("session state missing")
+		}
+		return state
+	}
+
+	if state := route(toolErrorBody(t, "a", 2, true)); state.Difficulty != decide.Routine {
+		t.Fatalf("below threshold raised difficulty: %#v", state)
+	}
+	raised := route(toolErrorBody(t, "a", 3, true))
+	if raised.Difficulty != decide.Hard || raised.ErrorEpisode != "a-0" {
+		t.Fatalf("threshold did not raise one band once: %#v", raised)
+	}
+	if grown := route(toolErrorBody(t, "a", 4, true)); grown.Difficulty != decide.Hard {
+		t.Fatalf("same episode raised twice: %#v", grown)
+	}
+	fresh := route(toolErrorBody(t, "b", 3, true))
+	if fresh.Difficulty != decide.Extreme || fresh.ErrorEpisode != "b-0" {
+		t.Fatalf("a new episode did not raise once: %#v", fresh)
+	}
+	cleared := route(toolErrorBody(t, "c", 3, false))
+	if cleared.Difficulty != decide.Extreme || cleared.ErrorEpisode != "" {
+		t.Fatalf("unmarked results must clear the latch without demoting: %#v", cleared)
 	}
 }

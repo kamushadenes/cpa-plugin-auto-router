@@ -52,6 +52,20 @@ The executor tries at most three ranked models when the host returns an allow-li
 
 A successful retry stores the effective session model. The decision log and `X-Auto-Router` identify that model with `reason: failover` and the ordered `failed_from` list. This host version exposes callback errors as text, so the plugin matches explicit rate-limit, overload, cooldown, unavailable-auth, API-error, selected status, and premature-stream-close markers. Invalid requests and authentication errors return immediately. No host patch is required; numeric status propagation is tracked in issue #3.
 
+Every retry after a transport failure carries a notice appended to the request body as a trailing user turn, in the request's own format: a `user` message for `chat-completions`, an `input_text` message item for `responses`. It names the model that did not complete, the model now running, and `failover`. A first attempt carries a notice only when the router moved the session to a different model, and that wording says the session moved rather than claiming the previous model failed. Existing turns, tool-call pairs, unknown fields, and numeric precision are preserved; the original body is never mutated, so the routing and Jev paths never see a notice.
+
+`X-Auto-Router-Tier` accompanies `X-Auto-Router` on both the buffered and streaming paths and names the tier the router selected.
+
+## Difficulty raise from repeated tool failures
+
+Three consecutive tool results that declare failure through a structured field and answer a call issued in the same request raise difficulty by one band. A result declares failure through `is_error: true`, a `status` of `failed` or `error`, a non-empty `error` field, or a tool execution envelope whose numeric `exit_code` is non-zero. Prose is never read as failure, so an unmarked message that merely mentions an error does not count, and `error` values of `null`, `false`, `0`, `""`, `{}` and `[]` are all treated as absence of failure.
+
+The execution envelope is matched by shape, not by guesswork: the payload must carry both `output` and a numeric `exit_code`. A user document that merely contains an `error` key cannot masquerade as execution metadata. Results whose marked failure names an access or environment problem (authentication, permission, quota, billing) are excluded because no tier resolves them.
+
+The raise is latched per episode. An episode is the trailing run of marked failures, identified by the call it started with, so a longer run of the same failures never raises twice and a fresh run after any progress can raise once more. The session floor still applies: difficulty, tier, and thinking never decrease.
+
+The envelope shape was captured on hermes-lab from a real Hermes turn driven against a disposable recorder. A failing command returned `{"output": "", "exit_code": 7, "error": null}` and a passing command returned `{"output": "", "exit_code": 0, "error": null}`, both on a `tool` message carrying only `content`, `role` and `tool_call_id`. OMP's wire shape was not captured, so its coverage is unverified.
+
 ## Benchmark table and tiers
 
 `table/tiers.yaml` is operator-owned. It declares the `flash`, `mid`, and `top` sets; the updater never changes it. The TEST catalog had 50 models, of which all 20 tier entries were present in the generated table:
@@ -144,3 +158,5 @@ The orchestrator ran the September 25 replay at 02:39 UTC against the TEST binar
 - Session state is in memory and is lost when the proxy restarts.
 - `Available` host cooldown information is not wired into the router in this version.
 - Models without a tier are reported and are not routed.
+- The tool-failure raise fires only on explicit structural markers. A client that reports failures purely as text never raises difficulty, by design.
+- `go test -race` fails two shutdown tests because their cleanup helper resets the stream lifecycle while the forwarding goroutine still reads it. The defect predates this work and is tracked in issue #11; every other package and test passes under `-race`.

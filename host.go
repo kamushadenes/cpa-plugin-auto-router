@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
+	"github.com/chloeassistant/cpa-plugin-auto-router/internal/notice"
 	"github.com/chloeassistant/cpa-plugin-auto-router/internal/session"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
@@ -159,7 +160,7 @@ func execute(raw []byte) ([]byte, error) {
 				ExitProtocol:  req.SourceFormat,
 				Model:         model,
 				Stream:        false,
-				Body:          req.OriginalRequest,
+				Body:          retryBody(req, failed, decision, routeCtx),
 				Headers:       req.Headers,
 				Query:         req.Query,
 				Alt:           req.Alt,
@@ -186,6 +187,7 @@ func execute(raw []byte) ([]byte, error) {
 					headers.Set("Content-Type", contentTypeFor(req.SourceFormat, false))
 				}
 				headers.Set("X-Auto-Router", effectiveRouterHeader(model, decision, failed))
+				headers.Set("X-Auto-Router-Tier", decision.Tier)
 				if len(failed) > 0 {
 					logFailover(req, decision, routeCtx, failed)
 				}
@@ -234,7 +236,7 @@ func executeStream(raw []byte) ([]byte, error) {
 	var ready hostStreamReady
 	var lastErr error
 	for attempt := range maxHostAttempts {
-		ready, lastErr = openHostStream(context.Background(), req, routedModel(decision))
+		ready, lastErr = openHostStream(context.Background(), req, routedModel(decision), retryBody(req, failed, decision, routeCtx))
 		if lastErr == nil {
 			break
 		}
@@ -272,8 +274,9 @@ func executeStream(raw []byte) ([]byte, error) {
 		closePluginStream(pluginStreamID, "")
 	}(ready)
 	headers := http.Header{
-		"Content-Type":  []string{contentTypeFor(req.SourceFormat, true)},
-		"X-Auto-Router": []string{effectiveRouterHeader(model, decision, failed)},
+		"Content-Type":       []string{contentTypeFor(req.SourceFormat, true)},
+		"X-Auto-Router":      []string{effectiveRouterHeader(model, decision, failed)},
+		"X-Auto-Router-Tier": []string{decision.Tier},
 	}
 	return okEnvelope(map[string]any{"headers": headers})
 }
@@ -312,6 +315,7 @@ func decisionForExecutorWithContext(req rpcExecutorRequest) (decide.Decision, ro
 			return decide.Decision{}, routeContext{}, 0, err
 		}
 	}
+	routeCtx.transitionReason = decision.Reason
 	if decision.Reason != "context_overflow_risk" {
 		decision.Reason = "reclassified"
 		decision.Choice.Reason = "reclassified"
@@ -339,20 +343,57 @@ func routedModel(decision decide.Decision) string {
 // ponytail: three host attempts, no retry framework until a real policy needs one.
 const maxHostAttempts = 3
 
+// retryBody returns the body for one host attempt. A retry after a transport
+// failure carries a failover notice naming the model that just failed. A first
+// attempt carries a capability notice only when the router actually moved this
+// session to a different model. Otherwise the original body is sent untouched.
+func retryBody(req rpcExecutorRequest, failed []string, decision decide.Decision, routeCtx routeContext) []byte {
+	if len(failed) > 0 {
+		return notice.Inject(req.SourceFormat, req.OriginalRequest,
+			notice.Failover(failed[len(failed)-1], decision.Model, "failover"))
+	}
+	reason := routeCtx.transitionReason
+	if reason == "" {
+		reason = decision.Reason
+	}
+	if routeCtx.errorBumped {
+		reason = "tool-error-bump"
+	}
+	if !capabilityTransition(reason) || routeCtx.previousModel == "" || routeCtx.previousModel == decision.Model {
+		return req.OriginalRequest
+	}
+	return notice.Inject(req.SourceFormat, req.OriginalRequest,
+		notice.Capability(routeCtx.previousModel, decision.Model, reason))
+}
+
+// capabilityTransition reports whether a routing reason means the session moved
+// to a different model. "fallback" and "vision-swap" change the model just as an
+// escalation does, so they are included. "escalate-thinking" and "keep" hold the
+// same model, and the caller's model comparison filters them out anyway.
+func capabilityTransition(reason string) bool {
+	switch reason {
+	case "escalate-tier", "model-gone", "fallback", "vision-swap",
+		"context_overflow_risk", "tool-error-bump":
+		return true
+	default:
+		return false
+	}
+}
+
 type hostStreamReady struct {
 	streamID     string
 	firstPayload []byte
 	done         bool
 }
 
-func openHostStream(ctx context.Context, req rpcExecutorRequest, model string) (hostStreamReady, error) {
+func openHostStream(ctx context.Context, req rpcExecutorRequest, model string, body []byte) (hostStreamReady, error) {
 	responseRaw, err := hostCall(pluginabi.MethodHostModelExecuteStream, hostModelExecutionRequest{
 		HostModelExecutionRequest: pluginapi.HostModelExecutionRequest{
 			EntryProtocol: req.SourceFormat,
 			ExitProtocol:  req.SourceFormat,
 			Model:         model,
 			Stream:        true,
-			Body:          req.OriginalRequest,
+			Body:          body,
 			Headers:       req.Headers,
 			Query:         req.Query,
 			Alt:           req.Alt,
@@ -538,6 +579,8 @@ func retryableHostFailure(status int, err error) bool {
 		"status 503",
 		"status 529",
 		"stream closed before",
+		"stream stalled",
+		"request_timeout",
 	} {
 		if strings.Contains(message, marker) {
 			return true
