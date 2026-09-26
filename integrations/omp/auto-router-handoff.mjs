@@ -14,7 +14,7 @@ export default function autoRouterHandoff(pi) {
   let previousModel = "";
   let previousTier = "";
   let pending = null;
-  let compacting = false;
+  let emitting = false;
 
   function persist() {
     pi.appendEntry(STATE_TYPE, { previousModel, previousTier, pending });
@@ -49,7 +49,6 @@ export default function autoRouterHandoff(pi) {
         previousTier,
         effectiveTier: transition.effectiveTier,
         reason: transition.reason,
-        eligible: transition.eligible,
       };
     }
     previousModel = transition.model || previousModel;
@@ -58,19 +57,19 @@ export default function autoRouterHandoff(pi) {
   });
 
   pi.on("agent_end", (event, ctx) => {
-    if (!pending || compacting || event.willContinue || !ctx.isIdle() || ctx.hasPendingMessages()) return;
+    if (!pending || emitting || event.willContinue || !ctx.isIdle() || ctx.hasPendingMessages()) return;
     const transition = pending;
     pending = null;
-    compacting = true;
+    emitting = true;
     try {
       persist();
       pi.sendMessage({
         customType: "auto-router-handoff",
-        content: `${noticeText(transition.previousModel, transition.effectiveModel, transition.reason)} Automatic compaction was not attempted because OMP exposes no verified idle extension boundary after a provider response; run /compact before continuing if a fresh summary is required.`,
+        content: noticeText(transition.previousModel, transition.effectiveModel, transition.reason),
         display: true,
       }, { triggerTurn: false, deliverAs: "nextTurn" });
     } finally {
-      compacting = false;
+      emitting = false;
     }
   });
 }

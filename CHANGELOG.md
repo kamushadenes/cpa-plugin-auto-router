@@ -11,7 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added offline context-window filtering before model selection (#7).
 - Documented the 1M auto-router context override for OMP clients (#7).
 - Bounded Jev classification snippets to preserve input capacity (#7).
-- Added installable OMP and Hermes model-transition guidance adapters.
+- Added an `X-Auto-Router-Tier` response header naming the routed tier (#9).
+- Added installable OMP and Hermes model-transition guidance adapters (#9).
 
 ### Fixed
 - Retry explicit request timeouts and stalled streams before any output is emitted (#9).

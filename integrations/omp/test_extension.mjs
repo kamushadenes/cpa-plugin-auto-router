@@ -24,7 +24,7 @@ await handlers.get("agent_end")({ willContinue: false }, ctx);
 assert.equal(messages.length, 1);
 assert.equal(messages[0].options.deliverAs, "nextTurn");
 assert.match(messages[0].message.content, /mid-model to top-model/);
-assert.match(messages[0].message.content, /Automatic compaction was not attempted/);
+assert.doesNotMatch(messages[0].message.content, /compact|compaction|fresh summary/i);
 await handlers.get("agent_end")({ willContinue: false }, ctx);
 assert.equal(messages.length, 1);
 console.log("OMP handoff extension tests passed");
