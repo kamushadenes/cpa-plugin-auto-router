@@ -15,6 +15,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added a model-change notice to retry request bodies after a failover (#9).
 - Raised difficulty one band after three explicitly failed tool calls in a row (#9).
 
+### Changed
+- Moved production deployment to the dedicated cliproxy LXC (`root@10.23.23.12:/opt/cliproxy`); `make install` now copies there, and the production runbook documents the new host.
+
 ### Fixed
 - Retry explicit request timeouts and stalled streams before any output is emitted (#9).
 - Kept uncertain difficulty decisions within one band of the classifier without lowering existing sessions (#5).

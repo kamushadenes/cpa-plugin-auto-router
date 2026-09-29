@@ -7,7 +7,7 @@ Jev answers nine category factors and one five-level effort question in a single
 ## TEST verification
 
 Task9 was run against the TEST proxy on port 8318. Production (`cliproxyapi.service`, port 8317) was not changed. Production rollout is an operator-run Task10 step.
-Production rollout is operator-run; see [`docs/runbook-production.md`](docs/runbook-production.md).
+Production rollout is operator-run; see [`docs/runbook-production.md`](docs/runbook-production.md). Production runs in the cliproxy LXC (`root@10.23.23.12:/opt/cliproxy`), not in `~/cliproxyapi`.
 
 ## Install
 
