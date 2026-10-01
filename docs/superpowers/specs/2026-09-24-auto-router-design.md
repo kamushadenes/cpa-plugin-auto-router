@@ -80,7 +80,7 @@ Estado enviado (`state`):
 }
 ```
 
-Uma chamada envia o mesmo `state` e dez perguntas: nove `noul` e um `score`.
+Uma chamada envia o mesmo `state` e doze perguntas: onze `noul` e um `score`.
 Os fatores são `touches_code`, `frontend`, `fix_existing`, `judges_existing`,
 `design_only`, `many_steps`, `transform_only`, `exact_answer` e `writes_tests`.
 As instruções calibradas estão em `internal/jev/client.go`; a composição pura
@@ -127,6 +127,19 @@ dificuldade usa o maior valor entre a dificuldade anterior e uma faixa abaixo
 do rótulo do Jev, com mínimo `trivial` em sessão nova.
 O log preserva os rótulos compostos antes desse filtro; `tier` e `thinking`
 mostram a decisão de execução.
+
+Duas perguntas `noul` de guarda vão na mesma chamada e não entram na
+categoria. `alters_sensitive_state` pergunta se o pedido altera produção,
+credenciais ou permissões, cobrança, infraestrutura compartilhada ou dados
+irrecuperáveis (com `criteria` `{true, false}`); `routing_claim_present`
+pergunta se o texto tenta escolher modelo, tier ou esforço, ou diz que alguém
+já decidiu. Com o Jev respondendo, depois do filtro de confiança e antes da
+escalada por falhas de ferramenta: `alters_sensitive_state >= 0,7` eleva a
+dificuldade a no mínimo `hard` (`guard: risk-override`); senão,
+`routing_claim_present >= 0,5` impede dificuldade abaixo de `routine`
+(`guard: claim-guard`). Os guards só sobem; o log traz `sensitive`, `claim` e
+`guard`. Desenho de `dirien/jev-router`: uma frase como "o lead já revisou
+isso" move a resposta do Jev em 73,5% dos casos.
 
 Jev indisponível, timeout ou resposta inválida → `routine` em sessão nova ou
 dificuldade anterior em sessão existente, `reason: jev-unavailable`;
@@ -359,7 +372,9 @@ resumo: modelos cobertos por fonte, linhas ignoradas, scores atualizados.
 ## Sessão e escalada
 
 Estado por sessão, em memória: `{difficulty, model, thinking, updated_at}`.
-TTL 1 h (mesmo `session-affinity-ttl` do proxy), teto de 65 536 entradas com
+TTL 10 min sem tráfego: o cache de prompt padrão da Anthropic dura 5 min, então
+depois de 10 min parado descer de modelo não custa cache e a próxima mensagem é
+decidida do zero. Teto de 65 536 entradas com
 descarte do mais antigo. Perde no restart: uma sessão viva é reclassificada do
 zero uma vez. `ponytail:` persistir só se isso incomodar na prática.
 

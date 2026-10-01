@@ -90,7 +90,9 @@ type pluginState struct {
 
 var (
 	state pluginState
-	store = session.New(time.Hour, 65536)
+	// Anthropic's default prompt cache lives 5 minutes; after 10 idle minutes a
+	// downgrade no longer costs cache, so the next message is decided afresh.
+	store = session.New(10*time.Minute, 65536)
 )
 
 type pendingRoute struct {
@@ -271,6 +273,9 @@ type routeMeta struct {
 	jevMillis            int64
 	hasImage             bool
 	estTokens            int
+	sensitive            float64
+	claim                float64
+	guard                string
 }
 
 type routeContext struct {
@@ -384,6 +389,14 @@ func lowConfidenceDifficulty(jevLabel, previous string) string {
 // correlated tool failures that raise difficulty one band, once per episode.
 const toolErrorBumpThreshold = 3
 
+// Guard thresholds follow dirien/jev-router's design: a likely state-changing
+// request goes to the top tier, and a likely routing claim in the prompt cannot
+// pull a fresh session below the new-session default.
+const (
+	sensitiveGuardThreshold = 0.7
+	claimGuardThreshold     = 0.5
+)
+
 func oneStepAboveDifficulty(difficulty string) string {
 	switch difficulty {
 	case decide.Trivial:
@@ -453,6 +466,15 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 			} else {
 				difficulty = lowConfidenceDifficulty(decide.Difficulty(jevResult.Effort), prev.Difficulty)
 			}
+			meta.sensitive = jevResult.Sensitive
+			meta.claim = jevResult.Claim
+			if jevResult.Sensitive >= sensitiveGuardThreshold && decide.Rank(difficulty) < decide.Rank(decide.Hard) {
+				difficulty = decide.Hard
+				meta.guard = "risk-override"
+			} else if jevResult.Claim >= claimGuardThreshold && decide.Rank(difficulty) < decide.Rank(decide.Routine) {
+				difficulty = decide.Routine
+				meta.guard = "claim-guard"
+			}
 			meta.difficulty = difficulty
 		}
 	}
@@ -503,6 +525,9 @@ func routeResponse(callbackID, sid string, decision decide.Decision, meta routeM
 		"jev_ms":                meta.jevMillis,
 		"est_tokens":            meta.estTokens,
 		"context_filtered":      decision.ContextFiltered,
+		"sensitive":             meta.sensitive,
+		"claim":                 meta.claim,
+		"guard":                 meta.guard,
 	}
 	payload, err := json.Marshal(fields)
 	if err != nil {

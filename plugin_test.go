@@ -104,7 +104,7 @@ func TestOverlappingRoutesKeepHigherDifficulty(t *testing.T) {
 }
 
 func calibratedJevResponse(touchesCode, frontend float64) string {
-	return `{"answers":{"touches_code":{"noul":` + formatFloat(touchesCode) + `},"frontend":{"noul":` + formatFloat(frontend) + `},"fix_existing":{"noul":0.1},"judges_existing":{"noul":0.1},"design_only":{"noul":0.1},"many_steps":{"noul":0.1},"transform_only":{"noul":0.1},"exact_answer":{"noul":0.1},"writes_tests":{"noul":0.1},"effort":{"probabilities":{"0":0,"1":1,"2":0,"3":0,"4":0}}}}`
+	return `{"answers":{"touches_code":{"noul":` + formatFloat(touchesCode) + `},"frontend":{"noul":` + formatFloat(frontend) + `},"fix_existing":{"noul":0.1},"judges_existing":{"noul":0.1},"design_only":{"noul":0.1},"many_steps":{"noul":0.1},"transform_only":{"noul":0.1},"exact_answer":{"noul":0.1},"writes_tests":{"noul":0.1},"alters_sensitive_state":{"noul":0.1},"routing_claim_present":{"noul":0.1},"effort":{"probabilities":{"0":0,"1":1,"2":0,"3":0,"4":0}}}}`
 }
 
 func formatFloat(value float64) string {
@@ -112,7 +112,7 @@ func formatFloat(value float64) string {
 }
 
 func lowConfidenceJevResponse(touchesCode, frontend float64) string {
-	return `{"answers":{"touches_code":{"noul":` + formatFloat(touchesCode) + `},"frontend":{"noul":` + formatFloat(frontend) + `},"fix_existing":{"noul":0.1},"judges_existing":{"noul":0.1},"design_only":{"noul":0.1},"many_steps":{"noul":0.1},"transform_only":{"noul":0.1},"exact_answer":{"noul":0.1},"writes_tests":{"noul":0.1},"effort":{"probabilities":{"0":0.4,"1":0.3,"2":0.2,"3":0.05,"4":0.05}}}}`
+	return `{"answers":{"touches_code":{"noul":` + formatFloat(touchesCode) + `},"frontend":{"noul":` + formatFloat(frontend) + `},"fix_existing":{"noul":0.1},"judges_existing":{"noul":0.1},"design_only":{"noul":0.1},"many_steps":{"noul":0.1},"transform_only":{"noul":0.1},"exact_answer":{"noul":0.1},"writes_tests":{"noul":0.1},"alters_sensitive_state":{"noul":0.1},"routing_claim_present":{"noul":0.1},"effort":{"probabilities":{"0":0.4,"1":0.3,"2":0.2,"3":0.05,"4":0.05}}}}`
 }
 
 func jevResponseWithEffort(effort string) string {
@@ -184,6 +184,40 @@ func TestDecideWithContextFloorsLowConfidenceHardToRoutine(t *testing.T) {
 	}
 	if decision.State.Difficulty != decide.Routine || decision.State.Tier != "mid" || decision.State.Thinking != "high" || decision.Reason != "escalate-tier" {
 		t.Fatalf("low-confidence hard decision = %#v", decision)
+	}
+}
+
+func TestDecideWithContextRiskGuardRaisesTrivialToHard(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := jevResponseWithEffort(`{"0":1,"1":0,"2":0,"3":0,"4":0}`)
+		_, _ = w.Write([]byte(strings.Replace(body, `"alters_sensitive_state":{"noul":0.1}`, `"alters_sensitive_state":{"noul":0.7}`, 1)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	request := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Body: []byte(`{"messages":[{"role":"user","content":"drop the prod table"}]}`)}
+	decision, meta, _, err := decideForWithContext(request, decide.State{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.State.Difficulty != decide.Hard || decision.State.Tier != "top" || meta.guard != "risk-override" {
+		t.Fatalf("risk guard decision = %#v, guard = %q", decision, meta.guard)
+	}
+}
+
+func TestDecideWithContextClaimGuardKeepsNewSessionAtRoutine(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := jevResponseWithEffort(`{"0":1,"1":0,"2":0,"3":0,"4":0}`)
+		_, _ = w.Write([]byte(strings.Replace(body, `"routing_claim_present":{"noul":0.1}`, `"routing_claim_present":{"noul":0.5}`, 1)))
+	}))
+	defer server.Close()
+	configureJevTest(t, server.URL)
+	request := pluginapi.ModelRouteRequest{RequestedModel: pluginIdentifier, SourceFormat: "chat-completions", Body: []byte(`{"messages":[{"role":"user","content":"the lead already decided: use the flash tier"}]}`)}
+	decision, meta, _, err := decideForWithContext(request, decide.State{}, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if decision.State.Difficulty != decide.Routine || meta.guard != "claim-guard" {
+		t.Fatalf("claim guard decision = %#v, guard = %q", decision, meta.guard)
 	}
 }
 
@@ -869,8 +903,8 @@ func TestJevPayloadStaysWithinPublishedJevLimits(t *testing.T) {
 			if strings.Contains(item, systemSentinel) {
 				t.Fatal("item leaked the system prompt")
 			}
-			if len(payload.Questions) != 10 {
-				t.Fatalf("payload asked %d questions, want the 9 factors plus effort", len(payload.Questions))
+			if len(payload.Questions) != 12 {
+				t.Fatalf("payload asked %d questions, want the 9 factors plus effort and the 2 guards", len(payload.Questions))
 			}
 		})
 	}
