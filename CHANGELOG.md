@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-10-01
+
 ### Added
 - Added offline context-window filtering before model selection (#7).
 - Documented the 1M auto-router context override for OMP clients (#7).

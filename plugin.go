@@ -220,7 +220,7 @@ func pluginRegistration() registration {
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata: pluginapi.Metadata{
 			Name:             "auto-router",
-			Version:          "0.1.5",
+			Version:          "0.1.7",
 			Author:           "chloeassistant",
 			GitHubRepository: "https://github.com/chloeassistant/cpa-plugin-auto-router",
 			ConfigFields: []pluginapi.ConfigField{
