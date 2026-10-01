@@ -1,26 +1,28 @@
 package snippet
 
 import (
+	"encoding/json"
+	"net/http"
 	"strings"
 
 	"github.com/tidwall/gjson"
 )
 
+// Signals are local request facts the router uses itself; none is sent to Jev.
 type Signals struct {
-	Tools             int    `json:"tools"`
-	Images            int    `json:"images"`
-	Messages          int    `json:"messages"`
-	Format            string `json:"format"`
-	HasNewUserMessage bool   `json:"-"`
+	Images            int
+	HasNewUserMessage bool
+	// EstTokens is bytes/4 plus 1000 per image.
+	EstTokens int
 	// ToolErrorStreak counts the trailing tool results that carry an explicit
 	// error marker. Free-form text is never inspected for failure, and markers
 	// naming an access or environment problem are excluded because no model
 	// tier resolves them.
-	ToolErrorStreak int `json:"tool_error_streak"`
+	ToolErrorStreak int
 	// ToolErrorEpisode identifies that trailing run by the call it started
 	// with, so a longer run of the same failures stays one episode and a fresh
 	// run after any progress is a different one.
-	ToolErrorEpisode string `json:"-"`
+	ToolErrorEpisode string
 }
 
 // notCapability lists access and environment problems that a stronger model
@@ -86,63 +88,46 @@ func explicitToolError(item gjson.Result) (marked bool, counts bool) {
 	return true, true
 }
 
-// Extract returns the last user text, bounded by Unicode characters, and local
-// request counters. It never includes system prompts, tool results, or images.
-func Extract(format string, body []byte, max int) (string, Signals) {
-	sig := Signals{Format: format}
+// Extract returns the local request signals. It never builds the Jev state;
+// BuildState does that only when Jev is called.
+func Extract(body []byte) Signals {
+	var sig Signals
 	root := gjson.ParseBytes(body)
-	sig.Tools = arrayLen(root.Get("tools"))
-
-	var text string
-	var lastIsUserText bool
-	if messages := root.Get("messages"); messages.IsArray() {
-		items := messages.Array()
-		sig.Messages = len(items)
-		for _, item := range items {
-			textForItem := userText(item)
-			if textForItem != "" {
-				text = textForItem
-			}
-			sig.Images += imageCount(item.Get("content"))
-		}
-		if len(items) > 0 {
-			lastIsUserText = userText(items[len(items)-1]) != ""
-		}
-	} else if input := root.Get("input"); input.Type == gjson.String {
-		sig.Messages = 1
-		text = strings.TrimSpace(input.String())
-		lastIsUserText = text != ""
-	} else if input.IsArray() {
-		items := input.Array()
-		sig.Messages = len(items)
-		for _, item := range items {
-			textForItem := userText(item)
-			if textForItem != "" {
-				text = textForItem
-			}
-			sig.Images += imageCount(item.Get("content"))
-			if item.Get("type").String() == "input_image" || item.Get("type").String() == "image" {
-				sig.Images++
-			}
-		}
-		if len(items) > 0 {
-			lastIsUserText = userText(items[len(items)-1]) != ""
+	items := conversation(root)
+	for _, item := range items {
+		sig.Images += imageCount(item.Get("content"))
+		if typeName := item.Get("type").String(); typeName == "input_image" || typeName == "image" {
+			sig.Images++
 		}
 	}
+	sig.HasNewUserMessage = len(items) > 0 && userText(items[len(items)-1]) != ""
 	sig.ToolErrorStreak, sig.ToolErrorEpisode = toolErrorStreak(root)
-	if max <= 0 {
-		return "", sig
-	}
-	text = tailRunes(text, max)
-	sig.HasNewUserMessage = lastIsUserText && text != ""
-	return text, sig
+	// ponytail: bytes/4 plus image overhead estimates capacity without a tokenizer.
+	sig.EstTokens = (len(body)+3)/4 + sig.Images*1000
+	return sig
 }
 
-func arrayLen(value gjson.Result) int {
-	if !value.IsArray() {
-		return 0
+// BuildState returns the state sent to Jev: only human-written turns, the
+// assistant's last prose, tool names and session shape; never system prompts,
+// tool output, or images.
+func BuildState(headers http.Header, body []byte, max int, estTokens int) State {
+	return buildState(headers, conversation(gjson.ParseBytes(body)), max, estTokens)
+}
+
+// conversation is the message list in any supported format; a string input is one user message.
+func conversation(root gjson.Result) []gjson.Result {
+	if messages := root.Get("messages"); messages.IsArray() {
+		return messages.Array()
 	}
-	return len(value.Array())
+	input := root.Get("input")
+	if input.Type == gjson.String {
+		item, _ := json.Marshal(map[string]string{"role": "user", "content": input.String()})
+		return []gjson.Result{gjson.ParseBytes(item)}
+	}
+	if input.IsArray() {
+		return input.Array()
+	}
+	return nil
 }
 
 // toolErrorStreak counts trailing tool results that carry an explicit error
@@ -246,15 +231,4 @@ func imageCount(content gjson.Result) int {
 		}
 	}
 	return count
-}
-
-func tailRunes(text string, max int) string {
-	if text == "" {
-		return ""
-	}
-	runes := []rune(text)
-	if len(runes) <= max {
-		return text
-	}
-	return string(runes[len(runes)-max:])
 }

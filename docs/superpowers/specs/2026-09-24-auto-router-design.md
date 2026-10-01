@@ -70,17 +70,37 @@ upstream é do host, como hoje.
 
 ## Classificação (Jev)
 
-Estado enviado (`state`):
+Estado enviado (`state`), no formato do `dirien/jev-router` (`buildState`,
+commit `f9093109`):
 
 ```json
 {
-  "context": "Pedido a um proxy de LLMs. Classifique a tarefa que o usuário está pedindo.",
-  "item": "<últimos ≤1500 chars da última mensagem de usuário>",
-  "signals": {"tools": 12, "images": 0, "messages": 37, "format": "responses"}
+  "request": "<última mensagem humana preparada, até 4000 chars>",
+  "recent_user_turns": ["<até 2 mensagens humanas anteriores, 600 chars cada>"],
+  "last_assistant_message": "<última prosa do assistente, 800 chars; só se request < 30 palavras>",
+  "session": {"harness": "Claude Code", "depth": "early (under 20k tokens)", "recent_tools": "Bash 6 times, Edit 3 times"}
 }
 ```
 
-Uma chamada envia o mesmo `state` e dez perguntas: nove `noul` e um `score`.
+Mensagem humana é `role: user` com texto ou imagem e sem `tool_result`, em
+Chat Completions, Anthropic Messages e Responses. Preparar é, nesta ordem:
+remover wrappers de harness (as tags do `jev-router`, o bloco de AGENTS.md e
+`<memory-context>` do Hermes), redigir segredos para `[REDACTED <tipo>]`,
+trocar blocos de código por `[code block (lang), N lines]` e cortar mantendo
+25% do começo e 75% do fim. Imagem sem texto vira
+`(the user sent N image(s) and no text)`. `harness` vem dos headers (Claude
+Code ou Codex CLI; senão `unknown`), `depth` do número de mensagens humanas e
+de `est_tokens`, `recent_tools` dos nomes das últimas 20 tool calls nos três
+formatos.
+
+O Jev nunca vê system prompt, saída de ferramenta, conteúdo de arquivo,
+imagens, headers nem os sinais locais (`images`, falhas de ferramenta), que
+continuam só no Go. Um 403 com corpo HTML (firewall da borda) provoca uma
+única nova tentativa, no mesmo timeout, com o estado endurecido: URLs, paths,
+caracteres de shell e nomes de comando são removidos; o log marca
+`jev_hardened`.
+
+Uma chamada envia o mesmo `state` e doze perguntas: onze `noul` e um `score`.
 Os fatores são `touches_code`, `frontend`, `fix_existing`, `judges_existing`,
 `design_only`, `many_steps`, `transform_only`, `exact_answer` e `writes_tests`.
 As instruções calibradas estão em `internal/jev/client.go`; a composição pura
@@ -125,8 +145,22 @@ escaladas, sem chamadas de rede.
 Abaixo de `confidence_threshold` (padrão 0,6), categoria usa ranking geral;
 dificuldade usa o maior valor entre a dificuldade anterior e uma faixa abaixo
 do rótulo do Jev, com mínimo `trivial` em sessão nova.
-O log preserva os rótulos compostos antes desse filtro; `tier` e `thinking`
-mostram a decisão de execução.
+O log preserva a categoria composta antes desse filtro; `difficulty` no log é
+a efetiva (depois do filtro, dos guards e da escalada por falhas de
+ferramenta), igual à que define `tier` e `thinking`.
+
+Duas perguntas `noul` de guarda vão na mesma chamada e não entram na
+categoria. `alters_sensitive_state` pergunta se o pedido altera produção,
+credenciais ou permissões, cobrança, infraestrutura compartilhada ou dados
+irrecuperáveis (com `criteria` `{true, false}`); `routing_claim_present`
+pergunta se o texto tenta escolher modelo, tier ou esforço, ou diz que alguém
+já decidiu. Com o Jev respondendo, depois do filtro de confiança e antes da
+escalada por falhas de ferramenta: `alters_sensitive_state >= 0,7` eleva a
+dificuldade a no mínimo `hard` (`guard: risk-override`); senão,
+`routing_claim_present >= 0,5` impede dificuldade abaixo de `routine`
+(`guard: claim-guard`). Os guards só sobem; o log traz `sensitive`, `claim` e
+`guard`. Desenho de `dirien/jev-router`: uma frase como "o lead já revisou
+isso" move a resposta do Jev em 73,5% dos casos.
 
 Jev indisponível, timeout ou resposta inválida → `routine` em sessão nova ou
 dificuldade anterior em sessão existente, `reason: jev-unavailable`;
@@ -359,7 +393,9 @@ resumo: modelos cobertos por fonte, linhas ignoradas, scores atualizados.
 ## Sessão e escalada
 
 Estado por sessão, em memória: `{difficulty, model, thinking, updated_at}`.
-TTL 1 h (mesmo `session-affinity-ttl` do proxy), teto de 65 536 entradas com
+TTL 10 min sem tráfego: o cache de prompt padrão da Anthropic dura 5 min, então
+depois de 10 min parado descer de modelo não custa cache e a próxima mensagem é
+decidida do zero. Teto de 65 536 entradas com
 descarte do mais antigo. Perde no restart: uma sessão viva é reclassificada do
 zero uma vez. `ponytail:` persistir só se isso incomodar na prática.
 
@@ -392,15 +428,17 @@ o modelo preserva o cache de prompt, que domina o custo real.
   `ExecutorResponse.Headers`, para ver no cliente quem respondeu sem abrir log.
 - `plugin.register` expõe `ConfigFields`: `enabled`, `jev_api_key_env`,
   `jev_base_url`, `jev_model`, `confidence_threshold` (0,6), `table_path`,
-  `snippet_chars` (1500), `jev_timeout` (2 s).
+  `snippet_chars` (4000, corte de `request`), `jev_timeout` (2 s).
 
 ## Segurança e privacidade
 
 - Chave do Jev lida de variável de ambiente nomeada na config, nunca do YAML.
 - URL do Jev: https sempre; http só loopback/LAN (mesma política do plugin
   `jev` do Hermes).
-- Sai do host apenas o trecho da última mensagem do usuário e contadores. Sem
-  system prompt, sem tool results, sem imagens, sem headers.
+- Sai do host apenas o `state` acima: mensagens humanas preparadas (sem
+  segredos reconhecidos), a última prosa do assistente, nomes de ferramentas e
+  o formato da sessão. Sem system prompt, sem tool results, sem imagens, sem
+  headers.
 - O plugin não vê nem guarda credenciais de upstream: usa `host.model.*`.
 - Falha do roteador nunca bloqueia: default + log.
 

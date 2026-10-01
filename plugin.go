@@ -24,7 +24,7 @@ import (
 
 const (
 	pluginIdentifier   = "auto-router"
-	maxJevSnippetChars = 1500
+	maxJevSnippetChars = 4000
 )
 
 type lifecycleRequest struct {
@@ -90,7 +90,9 @@ type pluginState struct {
 
 var (
 	state pluginState
-	store = session.New(time.Hour, 65536)
+	// Anthropic's default prompt cache lives 5 minutes; after 10 idle minutes a
+	// downgrade no longer costs cache, so the next message is decided afresh.
+	store = session.New(10*time.Minute, 65536)
 )
 
 type pendingRoute struct {
@@ -138,7 +140,7 @@ func defaultPluginConfig() pluginConfig {
 		JevModel:            "typesafe/jev-1.13",
 		ConfidenceThreshold: 0.6,
 		TablePath:           "/home/hermes/cliproxyapi/plugins/auto-router/models.yaml",
-		SnippetChars:        1500,
+		SnippetChars:        maxJevSnippetChars,
 		JevTimeoutMS:        2000,
 	}
 }
@@ -269,8 +271,12 @@ type routeMeta struct {
 	difficultyConfidence float64
 	confidence           float64
 	jevMillis            int64
+	jevHardened          bool
 	hasImage             bool
 	estTokens            int
+	sensitive            float64
+	claim                float64
+	guard                string
 }
 
 type routeContext struct {
@@ -384,6 +390,14 @@ func lowConfidenceDifficulty(jevLabel, previous string) string {
 // correlated tool failures that raise difficulty one band, once per episode.
 const toolErrorBumpThreshold = 3
 
+// Guard thresholds follow dirien/jev-router's design: a likely state-changing
+// request goes to the top tier, and a likely routing claim in the prompt cannot
+// pull a fresh session below the new-session default.
+const (
+	sensitiveGuardThreshold = 0.7
+	claimGuardThreshold     = 0.5
+)
+
 func oneStepAboveDifficulty(difficulty string) string {
 	switch difficulty {
 	case decide.Trivial:
@@ -413,9 +427,8 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 	if err != nil {
 		return decide.Decision{}, routeMeta{}, routeContext{}, err
 	}
-	text, signals := snippet.Extract(req.SourceFormat, req.Body, cfg.SnippetChars)
-	// ponytail: bytes/4 plus image overhead estimates capacity without a tokenizer.
-	estTokens := (len(req.Body)+3)/4 + signals.Images*1000
+	signals := snippet.Extract(req.Body)
+	estTokens := signals.EstTokens
 	meta := routeMeta{hasImage: signals.Images > 0, estTokens: estTokens}
 	var category, difficulty string
 	jevOK := false
@@ -434,7 +447,8 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 			APIKey:       os.Getenv(cfg.JevAPIKeyEnv),
 			Timeout:      time.Duration(cfg.JevTimeoutMS) * time.Millisecond,
 		}
-		jevResult, jevErr := jev.Decide(context.Background(), jevCfg, text, signals)
+		state := snippet.BuildState(req.Headers, req.Body, cfg.SnippetChars, estTokens)
+		jevResult, jevErr := jev.Decide(context.Background(), jevCfg, state)
 		if jevErr == nil {
 			jevOK = true
 			meta.factors = jevResult.Factors
@@ -444,6 +458,7 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 			meta.difficultyConfidence = decide.DifficultyConfidence(jevResult.Effort)
 			meta.confidence = meta.difficultyConfidence
 			meta.jevMillis = jevResult.Millis
+			meta.jevHardened = jevResult.Hardened
 			if meta.categoryConfidence >= cfg.ConfidenceThreshold {
 				category = decide.Category(jevResult.Factors)
 				meta.category = category
@@ -452,6 +467,15 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 				difficulty = decide.Difficulty(jevResult.Effort)
 			} else {
 				difficulty = lowConfidenceDifficulty(decide.Difficulty(jevResult.Effort), prev.Difficulty)
+			}
+			meta.sensitive = jevResult.Sensitive
+			meta.claim = jevResult.Claim
+			if jevResult.Sensitive >= sensitiveGuardThreshold && decide.Rank(difficulty) < decide.Rank(decide.Hard) {
+				difficulty = decide.Hard
+				meta.guard = "risk-override"
+			} else if jevResult.Claim >= claimGuardThreshold && decide.Rank(difficulty) < decide.Rank(decide.Routine) {
+				difficulty = decide.Routine
+				meta.guard = "claim-guard"
 			}
 			meta.difficulty = difficulty
 		}
@@ -479,12 +503,11 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 }
 
 func routeResponse(callbackID, sid string, decision decide.Decision, meta routeMeta) ([]byte, error) {
+	// difficulty is the effective one, after the confidence gate, guards and
+	// the tool-failure raise; category stays the composed label.
 	category, difficulty := meta.category, meta.difficulty
 	if len(meta.factors) > 0 {
 		category = decide.Category(meta.factors)
-	}
-	if len(meta.effortP) > 0 {
-		difficulty = decide.Difficulty(meta.effortP)
 	}
 	fields := map[string]any{
 		"session":               hashSession(sid),
@@ -501,8 +524,12 @@ func routeResponse(callbackID, sid string, decision decide.Decision, meta routeM
 		"thinking":              decision.Thinking,
 		"reason":                decision.Reason,
 		"jev_ms":                meta.jevMillis,
+		"jev_hardened":          meta.jevHardened,
 		"est_tokens":            meta.estTokens,
 		"context_filtered":      decision.ContextFiltered,
+		"sensitive":             meta.sensitive,
+		"claim":                 meta.claim,
+		"guard":                 meta.guard,
 	}
 	payload, err := json.Marshal(fields)
 	if err != nil {

@@ -522,9 +522,7 @@ func logFailover(req rpcExecutorRequest, decision decide.Decision, routeCtx rout
 	if len(routeCtx.factors) > 0 {
 		category = decide.Category(routeCtx.factors)
 	}
-	if len(routeCtx.effortP) > 0 {
-		difficulty = decide.Difficulty(routeCtx.effortP)
-	}
+	// difficulty is the effective one, matching the routing decision log.
 	reason := "failover"
 	if decision.Reason == "context_overflow_risk" {
 		reason = decision.Reason

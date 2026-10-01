@@ -16,7 +16,7 @@
 - Plugin binary name is `auto-router.so`; host derives plugin id `auto-router` from the filename (`internal/pluginhost/platform.go:pluginFileFromPath`). Plugin id pattern: lowercase, digits, hyphen.
 - Virtual model id is exactly `auto-router`. Provider identifier returned by `executor.identifier` and `model.register` is exactly `auto-router`.
 - Jev call shape: `POST {base_url}{endpoint_path}` with `{"model","state","questions"}`; answers at `answers.<name>.choice`, `.probabilities`, `.confidence`. Defaults: `base_url=https://openrouter.ai`, `endpoint_path=/api/alpha/decisions`, `model=typesafe/jev-1.13`, key env `OPENROUTER_API_KEY`. https always; plain http only for loopback/RFC1918/CGNAT.
-- Confidence threshold default `0.6`. Snippet default `1500` chars. Jev timeout default `2s`.
+- Confidence threshold default `0.6`. `snippet_chars` (cut of the Jev `request`) default and cap `4000` chars. Jev timeout default `2s`.
 - Thinking level per difficulty: `trivial→low`, `routine→high`, `hard→xhigh`, `extreme→max`. Tier per difficulty: `trivial→flash`, `routine→mid`, `hard→top`, `extreme→top`.
 - Thinking is passed as suffix `model(level)`; the host clamps unsupported levels (`internal/thinking/validate.go`, suffix path).
 - Only-escalate rule: a session's difficulty never decreases; model changes only on `escalate-tier`, `vision-swap`, or `fallback`.
@@ -784,12 +784,14 @@ func TestStoreTTLAndEvict(t *testing.T) {
 
 ```go
 package snippet
-type Signals struct { Tools, Images, Messages int; Format string; HasNewUserMessage bool }
-// Extract returns the last user message text (tail ≤ max chars) and counters.
-// Handles chat-completions (`messages`) and Responses (`input` string|array).
+type Signals struct { Images int; HasNewUserMessage bool; EstTokens int; ToolErrorStreak int; ToolErrorEpisode string }
+// Extract returns the local signals for every request.
+// Handles chat-completions/Anthropic (`messages`) and Responses (`input` string|array).
 // Image = any content part with type image_url/input_image/image.
 // HasNewUserMessage=false when the last message is not a user text (e.g. only tool results).
-func Extract(format string, body []byte, max int) (string, Signals)
+func Extract(body []byte) Signals
+// BuildState builds the jev-router shaped state; called only when Jev is called.
+func BuildState(headers http.Header, body []byte, max int, estTokens int) State
 ```
 
 ```go
@@ -799,23 +801,21 @@ type Answer struct { Choice string; Probabilities map[string]float64; Confidence
 type Result struct { Category, Difficulty Answer; Millis int64 }
 var ErrUnavailable = errors.New("jev unavailable")
 func (c Config) Validate() error   // URL policy: https anywhere; http only loopback/RFC1918/CGNAT/ULA; no userinfo
-func Decide(ctx context.Context, c Config, item string, sig snippet.Signals) (Result, error)
+func Decide(ctx context.Context, c Config, state snippet.State) (Result, error)
 ```
 
 Request body sent by `Decide`:
 
 ```json
 {"model":"typesafe/jev-1.13",
- "state":{"context":"Request to an LLM proxy. Classify the task the user is asking for.",
-          "item":"<snippet>","signals":{"tools":12,"images":0,"messages":37,"format":"responses"}},
- "questions":{
-   "category":{"type":"choice","instructions":"Classify the task in `item` (use `signals` as hints).",
-     "criteria":{"webdev":"front-end/web UI/HTML/CSS/JS apps","backend":"server code, APIs, data models, implementation in a repo","agentic-terminal":"multi-step work driving shell/tools/files","debugging":"find why something fails; trace behaviour","review":"read, critique or test existing code; security review","spec-design":"architecture, design, planning, specs","writing":"prose, docs, messages, summaries for humans","extraction":"extract/reformat/classify data, tiny transformations","math-data":"math, statistics, data analysis with a definite answer"}},
-   "difficulty":{"type":"choice","instructions":"How hard is `item` for a strong model?",
-     "criteria":{"trivial":"one-liner or lookup, no reasoning","routine":"standard task, known pattern","hard":"needs real reasoning, many constraints or a large codebase","extreme":"research-grade, ambiguous, or very long multi-step"}}}}
+ "state":{"request":"<latest human message, prepared, ≤4000 chars>",
+          "recent_user_turns":["<≤2 earlier human messages, ≤600 chars each>"],
+          "last_assistant_message":"<≤800 chars, only when request < 30 words>",
+          "session":{"harness":"Claude Code","depth":"early (under 20k tokens)","recent_tools":"Bash 6 times, Edit 3 times"}},
+ "questions":{"<9 noul category factors, effort score, 2 noul guards — see internal/jev/client.go>":{}}}
 ```
 
-Response parsing: `answers.category.choice` (string), `answers.category.probabilities` (object) or fallback derive from `choice` = 1.0, `answers.category.confidence` (number, default 0). Any HTTP ≠ 200, JSON error, timeout, response > 1 MB → `ErrUnavailable`.
+Response parsing (`parseResult`): `answers` must be an object. Each of the 9 category factors (`touches_code`, `frontend`, `fix_existing`, `judges_existing`, `design_only`, `many_steps`, `transform_only`, `exact_answer`, `writes_tests`) is required as `{"noul": p}` with `p` in [0,1]. `effort` is required: either `probabilities` with exactly the keys `"0"`–`"4"`, each in [0,1] and summing to 0.98–1.02, or, without `probabilities`, an integer `score` 0–4 that becomes probability 1 at that level. The guards `alters_sensitive_state` and `routing_claim_present` are optional: absent or `null` counts as 0, but a present answer that is not `{"noul": p}` with `p` in [0,1] is an error. `ErrUnavailable` is returned for an invalid URL or empty key, a transport failure or timeout (one deadline covers both calls), a read failure, a response over 1 MiB, an HTTP status other than 200 (a 403 with an HTML body is first retried once with the hardened state), malformed JSON, missing `answers`, or any invalid factor, effort or guard answer.
 
 - [x] **Step 1: Write failing tests** — snippet: chat body with system+user+assistant+user → returns last user text, `Messages=4`, `HasNewUserMessage=true`; Responses body with `input` array and an `input_image` part → `Images=1`; tool-result-only last message → `HasNewUserMessage=false`; tail truncation at `max`. jev: `httptest.Server` returning a canned answer → `Result` fields; server returning 500 → `ErrUnavailable`; `Validate` rejects `http://example.com`, accepts `http://127.0.0.1:9`, rejects `https://u:p@host`.
 
@@ -853,9 +853,9 @@ Registration capabilities: `model_registrar:true, model_router:true, executor:tr
 `routeModel(raw)`:
 1. Unmarshal `rpcModelRouteRequest`. If `RequestedModel != "auto-router"` (after `thinking.ParseSuffix`-style strip of a trailing `(...)`) → `{Handled:false}`.
 2. `sid := session.ID(req.Headers, req.Body)`; `prev, _ := store.Get(sid)`.
-3. `text, sig := snippet.Extract(req.SourceFormat, req.Body, cfg.SnippetChars)`.
-4. If `prev.Difficulty == Extreme` or `!sig.HasNewUserMessage` → decision = keep (reason `keep`), skip Jev.
-5. Else `res, err := jev.Decide(ctx, cfg.Jev, text, sig)`; `jevOK = err == nil`; category = `res.Category.Choice` if `Confidence >= threshold` else `""`; difficulty = `res.Difficulty.Choice` if `Confidence >= threshold` else (`prev.Difficulty` if set else `Routine`).
+3. `sig := snippet.Extract(req.Body)`.
+4. If `prev.Difficulty == Extreme` or `!sig.HasNewUserMessage` → decision = keep (reason `keep`), skip Jev and do not build the state.
+5. Else `state := snippet.BuildState(req.Headers, req.Body, cfg.SnippetChars, sig.EstTokens)`; `res, err := jev.Decide(ctx, cfg.Jev, state)`; `jevOK = err == nil`; category = composed label if its confidence ≥ threshold else `""`; difficulty = composed label if its confidence ≥ threshold else the low-confidence fallback, then guards and the tool-failure raise.
 6. `in := decide.Input{Table: tbl.Get(), Category, Difficulty, HasImage: sig.Images > 0, Exclude: excluded}`. `Available` = nil in v1 (`// ponytail: host cooldown not visible to routers; use host.affinity.lookup if a stored model keeps failing`).
 7. `d, err := decide.Next(in, prev, jevOK)`; on error → log error, `{Handled:false}` (host will 400 "unknown model" — acceptable, it's a table problem).
 8. `store.Put(sid, d.State)`; `pending.Store(requestKey(req), d)` where `requestKey` = `Metadata["request_id"]` if present else `sid` (`// ponytail: keyed by session when no request id; concurrent turns in one session race harmlessly to the same decision`).

@@ -281,7 +281,7 @@ func assertFailoverLog(t *testing.T, fake *fakeHostCalls, model string, failed [
 	t.Fatalf("failover log missing model=%q failed_from=%#v: %#v", model, failed, fake.logs)
 }
 
-func TestFailoverLogUsesComposedLabelsBelowConfidenceThreshold(t *testing.T) {
+func TestFailoverLogUsesComposedCategoryAndEffectiveDifficulty(t *testing.T) {
 	fake := newFakeHostCalls()
 	installFakeHost(t, fake)
 	factors := decide.Factors{"touches_code": 0.9, "frontend": 0.1, "fix_existing": 0.1, "judges_existing": 0.1, "design_only": 0.1, "many_steps": 0.1, "transform_only": 0.1, "exact_answer": 0.1, "writes_tests": 0.1}
@@ -290,7 +290,7 @@ func TestFailoverLogUsesComposedLabelsBelowConfidenceThreshold(t *testing.T) {
 	ctx := routeContext{factors: factors, effortP: effort, effortMean: decide.EffortMean(effort), category: "", difficulty: decide.Routine, categoryConfidence: 0.5, difficultyConfidence: 0.45, confidence: 0.45}
 	logFailover(rpcExecutorRequest{}, decision, ctx, []string{"first"})
 	fields := decisionLogFields(t, fake.logs[0])
-	if fields["category"] != "backend" || fields["difficulty"] != decide.Hard || fields["model"] != "model" || fields["reason"] != "failover" {
+	if fields["category"] != "backend" || fields["difficulty"] != decide.Routine || fields["model"] != "model" || fields["reason"] != "failover" {
 		t.Fatalf("logged failover = %#v", fields)
 	}
 }
