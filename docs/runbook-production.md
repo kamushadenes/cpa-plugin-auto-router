@@ -25,8 +25,14 @@ Approved-checkout note: this block assumes the approved artifact checkout at `~/
 
 ```bash
 # 1. Binary: build, then replace the single plugin file on the LXC. `make install` removes any older
-#    auto-router*.so first, so the host never loads two copies. No restart: the host reloads it.
+#    auto-router*.so first, so the host never loads two copies, and installs the new one as
+#    auto-router-<first 12 hex of its sha256>.so. It then rewrites /opt/cliproxy/config.yaml in place
+#    (same inode, so the config watcher sees it) with a `# auto-router deploy <file name>` line. The host
+#    reloads a plugin only when a config event changes the .so path, so no restart is needed. Installing
+#    an identical binary keeps the same name and nothing reloads.
 make install
+ssh root@10.23.23.12 'journalctl -u cliproxyapi -n 40 --no-pager | grep "plugin hot reloaded"'
+#    expect a fresh `plugin hot reloaded … active_version=…` line after the install
 
 # 2. Table (only when it changed)
 scp table/models.yaml root@10.23.23.12:/opt/cliproxy/plugins/auto-router/models.yaml
