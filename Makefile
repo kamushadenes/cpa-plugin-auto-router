@@ -3,6 +3,7 @@ PLUGIN := $(BIN_DIR)/auto-router.so
 # Production proxy runs in LXC 139 (see docs/runbook-production.md); ~/cliproxyapi is retired.
 PROD_HOST := root@10.23.23.12
 INSTALL_DIR := /opt/cliproxy/plugins
+PROD_CONFIG := /opt/cliproxy/config.yaml
 TEST_INSTALL_DIR := /home/hermes/cliproxyapi-test/plugins
 
 .PHONY: build test install clean
@@ -14,9 +15,13 @@ $(PLUGIN): $(shell find . -name '*.go' -not -path './updater/*') go.mod
 test:
 	go test ./...
 	cd updater && uv run --with pyyaml --with pyarrow --with pytest --python 3.12 python -m pytest -q
+# The host reloads the plugin only on a config event that changes the .so path:
+# name the file by content hash, then rewrite the config in place (cat > keeps
+# the inode the fsnotify watcher is bound to) with a changed deploy marker.
 install: build
-	scp -q $(PLUGIN) $(PROD_HOST):/tmp/auto-router.so
-	ssh $(PROD_HOST) 'rm -f $(INSTALL_DIR)/auto-router*.so && install -m 0644 -o cliproxy -g cliproxy /tmp/auto-router.so $(INSTALL_DIR)/auto-router.so && rm /tmp/auto-router.so'
+	name=auto-router-$$(sha256sum $(PLUGIN) | cut -c1-12).so && \
+	scp -q $(PLUGIN) $(PROD_HOST):/tmp/$$name && \
+	ssh $(PROD_HOST) "set -e; rm -f $(INSTALL_DIR)/auto-router*.so; install -m 0644 -o cliproxy -g cliproxy /tmp/$$name $(INSTALL_DIR)/$$name; rm /tmp/$$name; grep -v '^# auto-router deploy' $(PROD_CONFIG) > /tmp/auto-router-config.tmp; echo \"# auto-router deploy $$name\" >> /tmp/auto-router-config.tmp; cat /tmp/auto-router-config.tmp > $(PROD_CONFIG); rm /tmp/auto-router-config.tmp"
 install-test: build
 	mkdir -p $(TEST_INSTALL_DIR)
 	install -m 0644 $(PLUGIN) $(TEST_INSTALL_DIR)/auto-router.so
