@@ -41,10 +41,22 @@ records `reason: context_overflow_risk`. Decision logs add `est_tokens` and
 The local Jev schema imposes no input cap of its own. Published docs
 (https://www.jevtypesafeai.com/how-to-use) state limits of up to ~64k
 tokens for state plus questions, and 32k tokens for state plus the longest
-single question. The local regression caps `snippet_chars` at 1500 and
-asserts the actual serialized request body stays under 32000 bytes under
-worst-case escaping. This is a conservative wire-size check, not proof that
-the request stays within the published token budget.
+single question. The state now carries `request` (clipped to 4000
+characters), up to two earlier human turns (600 each) and, only after a
+request under 30 words, the last assistant prose (800). The regression fills
+every human turn with the full filler and asserts the serialized request body
+stays under 32000 bytes under worst-case escaping. The fillers contain
+whitespace, so the request has more than 30 words and the assistant prose is
+dropped.
+
+A request of fewer than 30 words can still be 4000 characters long, and then
+the assistant prose is added. If all 6000 characters were six-byte JSON
+escapes, the wire body would reach about 39 KB. The decoded state stays at
+most 6000 characters, at most 24 KB of UTF-8. The 32000-byte check is therefore
+tied to the published 32k-token budget through one assumption: Jev counts
+tokens on the decoded state, and every token covers at least one byte. This is
+a conservative size check, not proof that the request stays within the
+published token budget.
 
 ## Workaround
 Set a model override on the consumer side instead of relying on

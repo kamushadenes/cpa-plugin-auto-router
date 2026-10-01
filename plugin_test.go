@@ -28,14 +28,14 @@ func TestOverlappingRoutesKeepHigherDifficulty(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var request struct {
 			State struct {
-				Item string `json:"item"`
+				Request string `json:"request"`
 			} `json:"state"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
-		if strings.Contains(request.State.Item, "routine") {
+		if strings.Contains(request.State.Request, "routine") {
 			startOnce.Do(func() { close(routineStarted) })
 			<-releaseRoutine
 			_, _ = w.Write([]byte(routineResponse))
@@ -819,11 +819,16 @@ func TestJevPayloadStaysWithinPublishedJevLimits(t *testing.T) {
 		systemSentinel = "SYSTEM-PROMPT-MUST-NOT-REACH-JEV"
 		tail           = "LAST-USER-TAIL: répare le café ☕🙂"
 	)
+	// Every human turn and the assistant prose carry the full filler, so each
+	// state field is at its cap. The assistant prose is dropped because the
+	// fillers contain whitespace and the request is over 30 words.
 	chatBody := func(quotedText string) []byte {
-		return []byte(`{"messages":[{"role":"system","content":"` + systemSentinel + `"},{"role":"user","content":` + quotedText + `}]}`)
+		user := `{"role":"user","content":` + quotedText + `}`
+		return []byte(`{"messages":[{"role":"system","content":"` + systemSentinel + `"},` + user + `,{"role":"assistant","content":` + quotedText + `},` + user + `,` + user + `]}`)
 	}
 	responsesBody := func(quotedText string) []byte {
-		return []byte(`{"input":[{"role":"system","content":[{"type":"input_text","text":"` + systemSentinel + `"}]},{"role":"user","content":[{"type":"input_text","text":` + quotedText + `}]}]}`)
+		user := `{"role":"user","content":[{"type":"input_text","text":` + quotedText + `}]}`
+		return []byte(`{"input":[{"role":"system","content":[{"type":"input_text","text":"` + systemSentinel + `"}]},` + user + `,{"role":"assistant","content":[{"type":"output_text","text":` + quotedText + `}]},` + user + `,` + user + `]}`)
 	}
 	tests := []struct {
 		name   string
@@ -883,25 +888,32 @@ func TestJevPayloadStaysWithinPublishedJevLimits(t *testing.T) {
 			}
 			var payload struct {
 				State struct {
-					Item string `json:"item"`
+					Request              string   `json:"request"`
+					RecentUserTurns      []string `json:"recent_user_turns"`
+					LastAssistantMessage *string  `json:"last_assistant_message"`
 				} `json:"state"`
 				Questions map[string]json.RawMessage `json:"questions"`
 			}
 			if err := json.Unmarshal(payloadBytes, &payload); err != nil {
 				t.Fatalf("jev payload is not valid json: %v", err)
 			}
-			item := payload.State.Item
-			if got := utf8.RuneCountInString(item); got != maxJevSnippetChars {
-				t.Fatalf("item is %d characters, want the request clamped to %d", got, maxJevSnippetChars)
+			if len(payload.State.RecentUserTurns) != 2 || payload.State.LastAssistantMessage != nil {
+				t.Fatalf("state must carry two earlier turns and no assistant prose after a long request: %d turns, assistant %v", len(payload.State.RecentUserTurns), payload.State.LastAssistantMessage != nil)
 			}
-			if !strings.HasSuffix(item, tail) {
-				t.Fatalf("item must keep the newest user text, got trailing %q", item[len(item)-len(tail):])
+			sent := payload.State.Request
+			runes := []rune(text)
+			head, rest, ok := strings.Cut(sent, " … [")
+			if !ok || head != string(runes[:maxJevSnippetChars/4]) || !strings.HasSuffix(rest, "characters omitted] … "+string(runes[len(runes)-maxJevSnippetChars*3/4:])) {
+				t.Fatalf("request must keep the first quarter and last three quarters of %d characters: %q", maxJevSnippetChars, sent)
 			}
-			if !utf8.ValidString(item) || strings.ContainsRune(item, utf8.RuneError) {
-				t.Fatalf("item was cut mid-rune: %q", item)
+			if !strings.HasSuffix(sent, tail) {
+				t.Fatalf("request must keep the newest user text, got trailing %q", sent[len(sent)-len(tail):])
 			}
-			if strings.Contains(item, systemSentinel) {
-				t.Fatal("item leaked the system prompt")
+			if !utf8.ValidString(sent) || strings.ContainsRune(sent, utf8.RuneError) {
+				t.Fatalf("request was cut mid-rune: %q", sent)
+			}
+			if strings.Contains(string(payloadBytes), systemSentinel) {
+				t.Fatal("payload leaked the system prompt")
 			}
 			if len(payload.Questions) != 12 {
 				t.Fatalf("payload asked %d questions, want the 9 factors plus effort and the 2 guards", len(payload.Questions))

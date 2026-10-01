@@ -1,6 +1,6 @@
 # cpa-plugin-auto-router
 
-A native CLIProxyAPI plugin that exposes `auto-router`. It sends a bounded snippet of the last user message (up to `snippet_chars`, default 1500) and local request signals to Jev, then chooses a concrete model and thinking level from the local benchmark table. The host still performs the upstream request, including credentials, retries, cooldowns, usage accounting, and stream handling.
+A native CLIProxyAPI plugin that exposes `auto-router`. It sends Jev a small state shaped like `dirien/jev-router`'s: the latest human message (clipped to `snippet_chars`, default 4000, keeping its start and end), up to two earlier human messages, the assistant's last prose when the request is short, and the session's harness, depth and recent tool names. Harness wrappers (including Hermes `<memory-context>`) are removed, secrets are redacted, and code blocks become one-line descriptions. The plugin then chooses a concrete model and thinking level from the local benchmark table. The host still performs the upstream request, including credentials, retries, cooldowns, usage accounting, and stream handling.
 
 Jev answers nine category factors, one five-level effort question, and two guard questions in a single call. Go composes the labels using the calibrated rules in `internal/decide/compose.go`; the tests cover 39 category and 22 difficulty fixtures. After the mean-based cuts, mass of at least `0.35` at the next level can raise difficulty once: `p1` raises trivial to routine, `p3` raises routine to hard, and `p4` raises hard to extreme. Difficulty confidence depends only on the final label: `p0` for trivial, `p1+p2` for routine, `p2+p3` for hard, and `p3+p4` for extreme. Decision messages contain only JSON, including `factors`, `effort_p`, `effort_mean`, and both confidences. Logged labels describe the composition before the confidence gate; `tier` and `thinking` describe the actual routing decision. Below the confidence threshold, difficulty falls back to one band below the Jev label while preserving the previous session floor.
 
@@ -45,7 +45,7 @@ The plugin accepts these fields under `plugins.configs.auto-router`:
 - `jev_model`: classifier model. Default: `typesafe/jev-1.13`.
 - `confidence_threshold`: label confidence threshold. Default: `0.6`.
 - `table_path`: benchmark YAML path. The default points at the production plugin directory; set it explicitly for TEST.
-- `snippet_chars`: maximum user-message snippet sent to Jev. Default: `1500`.
+- `snippet_chars`: maximum characters of the latest human message sent to Jev. Default and cap: `4000`.
 - `jev_timeout_ms`: Jev request timeout. Default: `2000`.
 
 ## Model failover

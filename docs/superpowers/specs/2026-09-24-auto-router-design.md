@@ -70,15 +70,35 @@ upstream é do host, como hoje.
 
 ## Classificação (Jev)
 
-Estado enviado (`state`):
+Estado enviado (`state`), no formato do `dirien/jev-router` (`buildState`,
+commit `f9093109`):
 
 ```json
 {
-  "context": "Pedido a um proxy de LLMs. Classifique a tarefa que o usuário está pedindo.",
-  "item": "<últimos ≤1500 chars da última mensagem de usuário>",
-  "signals": {"tools": 12, "images": 0, "messages": 37, "format": "responses"}
+  "request": "<última mensagem humana preparada, até 4000 chars>",
+  "recent_user_turns": ["<até 2 mensagens humanas anteriores, 600 chars cada>"],
+  "last_assistant_message": "<última prosa do assistente, 800 chars; só se request < 30 palavras>",
+  "session": {"harness": "Claude Code", "depth": "early (under 20k tokens)", "recent_tools": "Bash 6 times, Edit 3 times"}
 }
 ```
+
+Mensagem humana é `role: user` com texto ou imagem e sem `tool_result`, em
+Chat Completions, Anthropic Messages e Responses. Preparar é, nesta ordem:
+remover wrappers de harness (as tags do `jev-router`, o bloco de AGENTS.md e
+`<memory-context>` do Hermes), redigir segredos para `[REDACTED <tipo>]`,
+trocar blocos de código por `[code block (lang), N lines]` e cortar mantendo
+25% do começo e 75% do fim. Imagem sem texto vira
+`(the user sent N image(s) and no text)`. `harness` vem dos headers (Claude
+Code ou Codex CLI; senão `unknown`), `depth` do número de mensagens humanas e
+de `est_tokens`, `recent_tools` dos nomes das últimas 20 tool calls nos três
+formatos.
+
+O Jev nunca vê system prompt, saída de ferramenta, conteúdo de arquivo,
+imagens, headers nem os sinais locais (`images`, falhas de ferramenta), que
+continuam só no Go. Um 403 com corpo HTML (firewall da borda) provoca uma
+única nova tentativa, no mesmo timeout, com o estado endurecido: URLs, paths,
+caracteres de shell e nomes de comando são removidos; o log marca
+`jev_hardened`.
 
 Uma chamada envia o mesmo `state` e doze perguntas: onze `noul` e um `score`.
 Os fatores são `touches_code`, `frontend`, `fix_existing`, `judges_existing`,
@@ -407,15 +427,17 @@ o modelo preserva o cache de prompt, que domina o custo real.
   `ExecutorResponse.Headers`, para ver no cliente quem respondeu sem abrir log.
 - `plugin.register` expõe `ConfigFields`: `enabled`, `jev_api_key_env`,
   `jev_base_url`, `jev_model`, `confidence_threshold` (0,6), `table_path`,
-  `snippet_chars` (1500), `jev_timeout` (2 s).
+  `snippet_chars` (4000, corte de `request`), `jev_timeout` (2 s).
 
 ## Segurança e privacidade
 
 - Chave do Jev lida de variável de ambiente nomeada na config, nunca do YAML.
 - URL do Jev: https sempre; http só loopback/LAN (mesma política do plugin
   `jev` do Hermes).
-- Sai do host apenas o trecho da última mensagem do usuário e contadores. Sem
-  system prompt, sem tool results, sem imagens, sem headers.
+- Sai do host apenas o `state` acima: mensagens humanas preparadas (sem
+  segredos reconhecidos), a última prosa do assistente, nomes de ferramentas e
+  o formato da sessão. Sem system prompt, sem tool results, sem imagens, sem
+  headers.
 - O plugin não vê nem guarda credenciais de upstream: usa `host.model.*`.
 - Falha do roteador nunca bloqueia: default + log.
 

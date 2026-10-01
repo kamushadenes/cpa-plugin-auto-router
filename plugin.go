@@ -24,7 +24,7 @@ import (
 
 const (
 	pluginIdentifier   = "auto-router"
-	maxJevSnippetChars = 1500
+	maxJevSnippetChars = 4000
 )
 
 type lifecycleRequest struct {
@@ -140,7 +140,7 @@ func defaultPluginConfig() pluginConfig {
 		JevModel:            "typesafe/jev-1.13",
 		ConfidenceThreshold: 0.6,
 		TablePath:           "/home/hermes/cliproxyapi/plugins/auto-router/models.yaml",
-		SnippetChars:        1500,
+		SnippetChars:        maxJevSnippetChars,
 		JevTimeoutMS:        2000,
 	}
 }
@@ -271,6 +271,7 @@ type routeMeta struct {
 	difficultyConfidence float64
 	confidence           float64
 	jevMillis            int64
+	jevHardened          bool
 	hasImage             bool
 	estTokens            int
 	sensitive            float64
@@ -426,9 +427,8 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 	if err != nil {
 		return decide.Decision{}, routeMeta{}, routeContext{}, err
 	}
-	text, signals := snippet.Extract(req.SourceFormat, req.Body, cfg.SnippetChars)
-	// ponytail: bytes/4 plus image overhead estimates capacity without a tokenizer.
-	estTokens := (len(req.Body)+3)/4 + signals.Images*1000
+	state, signals := snippet.Extract(req.Headers, req.Body, cfg.SnippetChars)
+	estTokens := signals.EstTokens
 	meta := routeMeta{hasImage: signals.Images > 0, estTokens: estTokens}
 	var category, difficulty string
 	jevOK := false
@@ -447,7 +447,7 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 			APIKey:       os.Getenv(cfg.JevAPIKeyEnv),
 			Timeout:      time.Duration(cfg.JevTimeoutMS) * time.Millisecond,
 		}
-		jevResult, jevErr := jev.Decide(context.Background(), jevCfg, text, signals)
+		jevResult, jevErr := jev.Decide(context.Background(), jevCfg, state)
 		if jevErr == nil {
 			jevOK = true
 			meta.factors = jevResult.Factors
@@ -457,6 +457,7 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 			meta.difficultyConfidence = decide.DifficultyConfidence(jevResult.Effort)
 			meta.confidence = meta.difficultyConfidence
 			meta.jevMillis = jevResult.Millis
+			meta.jevHardened = jevResult.Hardened
 			if meta.categoryConfidence >= cfg.ConfidenceThreshold {
 				category = decide.Category(jevResult.Factors)
 				meta.category = category
@@ -523,6 +524,7 @@ func routeResponse(callbackID, sid string, decision decide.Decision, meta routeM
 		"thinking":              decision.Thinking,
 		"reason":                decision.Reason,
 		"jev_ms":                meta.jevMillis,
+		"jev_hardened":          meta.jevHardened,
 		"est_tokens":            meta.estTokens,
 		"context_filtered":      decision.ContextFiltered,
 		"sensitive":             meta.sensitive,
