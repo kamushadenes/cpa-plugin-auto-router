@@ -21,7 +21,7 @@ test:
 install: build
 	name=auto-router-$$(sha256sum $(PLUGIN) | cut -c1-12).so && \
 	scp -q $(PLUGIN) $(PROD_HOST):/tmp/$$name && \
-	ssh $(PROD_HOST) "set -e; rm -f $(INSTALL_DIR)/auto-router*.so; install -m 0644 -o cliproxy -g cliproxy /tmp/$$name $(INSTALL_DIR)/$$name; rm /tmp/$$name; grep -v '^# auto-router deploy' $(PROD_CONFIG) > /tmp/auto-router-config.tmp; echo \"# auto-router deploy $$name\" >> /tmp/auto-router-config.tmp; cat /tmp/auto-router-config.tmp > $(PROD_CONFIG); rm /tmp/auto-router-config.tmp"
+	ssh $(PROD_HOST) "umask 077; set -e; rm -f $(INSTALL_DIR)/auto-router*.so; install -m 0644 -o cliproxy -g cliproxy /tmp/$$name $(INSTALL_DIR)/$$name; rm /tmp/$$name; grep -v '^# auto-router deploy' $(PROD_CONFIG) > $(PROD_CONFIG).deploy-tmp; echo \"# auto-router deploy $$name\" >> $(PROD_CONFIG).deploy-tmp; cat $(PROD_CONFIG).deploy-tmp > $(PROD_CONFIG); rm $(PROD_CONFIG).deploy-tmp"
 install-test: build
 	mkdir -p $(TEST_INSTALL_DIR)
 	install -m 0644 $(PLUGIN) $(TEST_INSTALL_DIR)/auto-router.so
