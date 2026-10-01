@@ -25,6 +25,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Secrets and harness wrappers are removed before text reaches Jev.
 - Code blocks are replaced by a one-line description before text reaches Jev.
 - Raised the `snippet_chars` default and cap from 1500 to 4000.
+- Decision logs now report the effective difficulty, after guards and the tool-failure raise.
+- A missing guard answer from Jev counts as zero instead of failing the classification.
 - Moved production deployment to the dedicated cliproxy LXC (`root@10.23.23.12:/opt/cliproxy`); `make install` now copies there, and the production runbook documents the new host.
 
 ### Fixed

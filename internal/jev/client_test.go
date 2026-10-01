@@ -164,6 +164,22 @@ func TestDecideRejectsMalformedCalibratedAnswers(t *testing.T) {
 	}
 }
 
+func TestDecideTreatsMissingGuardsAsZeroButRejectsInvalidOnes(t *testing.T) {
+	factors := `"touches_code":{"noul":0.9},"frontend":{"noul":0.1},"fix_existing":{"noul":0.2},"judges_existing":{"noul":0.1},"design_only":{"noul":0.1},"many_steps":{"noul":0.2},"transform_only":{"noul":0.1},"exact_answer":{"noul":0.1},"writes_tests":{"noul":0.1},"effort":{"probabilities":{"0":0,"1":0,"2":0,"3":1,"4":0}}`
+	decideWith := func(body string) (Result, error) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { _, _ = w.Write([]byte(body)) }))
+		defer server.Close()
+		return Decide(context.Background(), Config{BaseURL: server.URL, Model: "jev", APIKey: "secret", Timeout: time.Second}, snippet.State{Request: "item"})
+	}
+	result, err := decideWith(`{"answers":{` + factors + `,"routing_claim_present":null}}`)
+	if err != nil || result.Sensitive != 0 || result.Claim != 0 || result.Factors["touches_code"] != 0.9 {
+		t.Fatalf("missing guards: result = %+v, err = %v", result, err)
+	}
+	if _, err := decideWith(`{"answers":{` + factors + `,"alters_sensitive_state":{"noul":1.1}}}`); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("invalid guard: error = %v, want ErrUnavailable", err)
+	}
+}
+
 func TestDecideRetriesFirewallBlockOnceWithHardenedState(t *testing.T) {
 	var requests []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

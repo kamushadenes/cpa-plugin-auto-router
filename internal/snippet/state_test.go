@@ -16,7 +16,7 @@ func TestExtractBuildsJevRouterState(t *testing.T) {
 		`{"role":"user","content":"second ask"},` +
 		`{"role":"assistant","content":[{"type":"thinking","thinking":"hidden"},{"type":"text","text":"I propose to migrate the table."},{"type":"tool_use","name":"Edit"},{"type":"tool_use","name":"Bash"}]},` +
 		`{"role":"user","content":[{"type":"text","text":"<system-reminder>ignore</system-reminder><memory-context>recalled memory</memory-context>yes go ahead, key sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAA\n` + "```sh\\nrm -rf x\\nls\\n```" + `"}]}]}`)
-	state, _ := Extract(http.Header{"User-Agent": {"claude-cli/2.1"}}, anthropic, 4000)
+	state, _ := extract(http.Header{"User-Agent": {"claude-cli/2.1"}}, anthropic, 4000)
 	want := State{
 		Request:              "yes go ahead, key [REDACTED anthropic-key]\n[code block (sh), 2 lines]",
 		RecentUserTurns:      []string{"first ask", "second ask"},
@@ -32,7 +32,7 @@ func TestExtractBuildsJevRouterState(t *testing.T) {
 		`{"role":"assistant","content":"earlier prose","tool_calls":[{"id":"c1","function":{"name":"read_file"}}]},` +
 		`{"role":"tool","tool_call_id":"c1","content":"file contents"},` +
 		`{"role":"user","content":"` + long + `"}]}`)
-	state, _ = Extract(nil, chat, 40)
+	state, _ = extract(nil, chat, 40)
 	want = State{
 		Request: long[:10] + " … [159 characters omitted] … " + long[len(long)-30:],
 		Session: Session{Harness: "unknown", Depth: "new session", RecentTools: "read_file 1 time"},
@@ -47,7 +47,7 @@ func TestExtractBuildsJevRouterState(t *testing.T) {
 		`{"type":"function_call_output","call_id":"c1","output":"secret output"},` +
 		`{"type":"custom_tool_call","call_id":"c2","name":"apply_patch"},` +
 		`{"type":"message","role":"user","content":[{"type":"input_image","image_url":"x"}]}]}`)
-	state, _ = Extract(http.Header{"Originator": {"codex_cli_rs"}}, responses, 4000)
+	state, _ = extract(http.Header{"Originator": {"codex_cli_rs"}}, responses, 4000)
 	want = State{
 		Request:         "(the user sent 1 image(s) and no text)",
 		RecentUserTurns: []string{"fix it"},

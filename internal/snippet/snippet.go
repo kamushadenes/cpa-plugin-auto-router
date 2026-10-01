@@ -88,22 +88,12 @@ func explicitToolError(item gjson.Result) (marked bool, counts bool) {
 	return true, true
 }
 
-// Extract returns the state sent to Jev and the local request signals. The
-// state carries only human-written turns, the assistant's last prose, tool
-// names and session shape; never system prompts, tool output, or images.
-func Extract(headers http.Header, body []byte, max int) (State, Signals) {
+// Extract returns the local request signals. It never builds the Jev state;
+// BuildState does that only when Jev is called.
+func Extract(body []byte) Signals {
 	var sig Signals
 	root := gjson.ParseBytes(body)
-	var items []gjson.Result
-	if messages := root.Get("messages"); messages.IsArray() {
-		items = messages.Array()
-	} else if input := root.Get("input"); input.Type == gjson.String {
-		// A string input is one user message.
-		item, _ := json.Marshal(map[string]string{"role": "user", "content": input.String()})
-		items = []gjson.Result{gjson.ParseBytes(item)}
-	} else if input.IsArray() {
-		items = input.Array()
-	}
+	items := conversation(root)
 	for _, item := range items {
 		sig.Images += imageCount(item.Get("content"))
 		if typeName := item.Get("type").String(); typeName == "input_image" || typeName == "image" {
@@ -114,7 +104,30 @@ func Extract(headers http.Header, body []byte, max int) (State, Signals) {
 	sig.ToolErrorStreak, sig.ToolErrorEpisode = toolErrorStreak(root)
 	// ponytail: bytes/4 plus image overhead estimates capacity without a tokenizer.
 	sig.EstTokens = (len(body)+3)/4 + sig.Images*1000
-	return buildState(headers, items, max, sig.EstTokens), sig
+	return sig
+}
+
+// BuildState returns the state sent to Jev: only human-written turns, the
+// assistant's last prose, tool names and session shape; never system prompts,
+// tool output, or images.
+func BuildState(headers http.Header, body []byte, max int, estTokens int) State {
+	return buildState(headers, conversation(gjson.ParseBytes(body)), max, estTokens)
+}
+
+// conversation is the message list in any supported format; a string input is one user message.
+func conversation(root gjson.Result) []gjson.Result {
+	if messages := root.Get("messages"); messages.IsArray() {
+		return messages.Array()
+	}
+	input := root.Get("input")
+	if input.Type == gjson.String {
+		item, _ := json.Marshal(map[string]string{"role": "user", "content": input.String()})
+		return []gjson.Result{gjson.ParseBytes(item)}
+	}
+	if input.IsArray() {
+		return input.Array()
+	}
+	return nil
 }
 
 // toolErrorStreak counts trailing tool results that carry an explicit error

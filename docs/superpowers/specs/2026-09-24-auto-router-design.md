@@ -145,8 +145,9 @@ escaladas, sem chamadas de rede.
 Abaixo de `confidence_threshold` (padrão 0,6), categoria usa ranking geral;
 dificuldade usa o maior valor entre a dificuldade anterior e uma faixa abaixo
 do rótulo do Jev, com mínimo `trivial` em sessão nova.
-O log preserva os rótulos compostos antes desse filtro; `tier` e `thinking`
-mostram a decisão de execução.
+O log preserva a categoria composta antes desse filtro; `difficulty` no log é
+a efetiva (depois do filtro, dos guards e da escalada por falhas de
+ferramenta), igual à que define `tier` e `thinking`.
 
 Duas perguntas `noul` de guarda vão na mesma chamada e não entram na
 categoria. `alters_sensitive_state` pergunta se o pedido altera produção,

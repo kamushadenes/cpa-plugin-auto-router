@@ -245,15 +245,25 @@ func parseResult(body []byte) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("invalid effort answer: %w", err)
 	}
-	sensitive, err := parseNoul(envelope.Answers["alters_sensitive_state"])
+	sensitive, err := parseGuard(envelope.Answers["alters_sensitive_state"])
 	if err != nil {
 		return Result{}, fmt.Errorf("invalid guard alters_sensitive_state: %w", err)
 	}
-	claim, err := parseNoul(envelope.Answers["routing_claim_present"])
+	claim, err := parseGuard(envelope.Answers["routing_claim_present"])
 	if err != nil {
 		return Result{}, fmt.Errorf("invalid guard routing_claim_present: %w", err)
 	}
 	return Result{Factors: factors, Effort: effort, Sensitive: sensitive, Claim: claim}, nil
+}
+
+// parseGuard reads a guard answer. A missing or null answer is 0, as
+// jev-router's `?.noul`, so a dropped guard never fails the classification; a
+// present but invalid answer is still an error.
+func parseGuard(raw json.RawMessage) (float64, error) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return 0, nil
+	}
+	return parseNoul(raw)
 }
 
 var categoryFactors = []string{"touches_code", "frontend", "fix_existing", "judges_existing", "design_only", "many_steps", "transform_only", "exact_answer", "writes_tests"}

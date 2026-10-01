@@ -427,7 +427,7 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 	if err != nil {
 		return decide.Decision{}, routeMeta{}, routeContext{}, err
 	}
-	state, signals := snippet.Extract(req.Headers, req.Body, cfg.SnippetChars)
+	signals := snippet.Extract(req.Body)
 	estTokens := signals.EstTokens
 	meta := routeMeta{hasImage: signals.Images > 0, estTokens: estTokens}
 	var category, difficulty string
@@ -447,6 +447,7 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 			APIKey:       os.Getenv(cfg.JevAPIKeyEnv),
 			Timeout:      time.Duration(cfg.JevTimeoutMS) * time.Millisecond,
 		}
+		state := snippet.BuildState(req.Headers, req.Body, cfg.SnippetChars, estTokens)
 		jevResult, jevErr := jev.Decide(context.Background(), jevCfg, state)
 		if jevErr == nil {
 			jevOK = true
@@ -502,12 +503,11 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 }
 
 func routeResponse(callbackID, sid string, decision decide.Decision, meta routeMeta) ([]byte, error) {
+	// difficulty is the effective one, after the confidence gate, guards and
+	// the tool-failure raise; category stays the composed label.
 	category, difficulty := meta.category, meta.difficulty
 	if len(meta.factors) > 0 {
 		category = decide.Category(meta.factors)
-	}
-	if len(meta.effortP) > 0 {
-		difficulty = decide.Difficulty(meta.effortP)
 	}
 	fields := map[string]any{
 		"session":               hashSession(sid),

@@ -202,6 +202,14 @@ func TestDecideWithContextRiskGuardRaisesTrivialToHard(t *testing.T) {
 	if decision.State.Difficulty != decide.Hard || decision.State.Tier != "top" || meta.guard != "risk-override" {
 		t.Fatalf("risk guard decision = %#v, guard = %q", decision, meta.guard)
 	}
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	if _, err := routeResponse("", "", decision, meta); err != nil {
+		t.Fatal(err)
+	}
+	if fields := decisionLogFields(t, fake.logs[0]); fields["difficulty"] != decide.Hard || fields["guard"] != "risk-override" {
+		t.Fatalf("decision log must show the effective difficulty: difficulty=%#v guard=%#v", fields["difficulty"], fields["guard"])
+	}
 }
 
 func TestDecideWithContextClaimGuardKeepsNewSessionAtRoutine(t *testing.T) {
@@ -342,7 +350,7 @@ func TestRouteLogsCalibratedMetadata(t *testing.T) {
 	}
 }
 
-func TestRouteLogsComposedLabelsBelowConfidenceThreshold(t *testing.T) {
+func TestRouteLogsComposedCategoryAndEffectiveDifficultyBelowConfidenceThreshold(t *testing.T) {
 	fake := newFakeHostCalls()
 	installFakeHost(t, fake)
 	factors := decide.Factors{"touches_code": 0.9, "frontend": 0.1, "fix_existing": 0.1, "judges_existing": 0.1, "design_only": 0.1, "many_steps": 0.1, "transform_only": 0.1, "exact_answer": 0.1, "writes_tests": 0.1}
@@ -353,12 +361,12 @@ func TestRouteLogsComposedLabelsBelowConfidenceThreshold(t *testing.T) {
 		t.Fatal(err)
 	}
 	fields := decisionLogFields(t, fake.logs[0])
-	if fields["category"] != "backend" || fields["difficulty"] != decide.Hard {
+	if fields["category"] != "backend" || fields["difficulty"] != decide.Routine {
 		t.Fatalf("logged labels = category=%#v difficulty=%#v", fields["category"], fields["difficulty"])
 	}
 	logFailover(rpcExecutorRequest{}, decision, routeContext{factors: factors, effortP: effort, category: "", difficulty: decide.Routine}, []string{"failed-model"})
 	fields = decisionLogFields(t, fake.logs[1])
-	if fields["category"] != "backend" || fields["difficulty"] != decide.Hard || fields["model"] != "model" || fields["reason"] != "failover" {
+	if fields["category"] != "backend" || fields["difficulty"] != decide.Routine || fields["model"] != "model" || fields["reason"] != "failover" {
 		t.Fatalf("failover log = %#v", fields)
 	}
 	failedFrom, ok := fields["failed_from"].([]any)
