@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/notice"
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/session"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/decide"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/notice"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/session"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 )

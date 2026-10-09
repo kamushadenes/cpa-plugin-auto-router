@@ -15,8 +15,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/snippet"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/decide"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/snippet"
 )
 
 var ErrUnavailable = errors.New("jev unavailable")

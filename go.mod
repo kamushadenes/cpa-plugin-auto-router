@@ -1,4 +1,4 @@
-module github.com/chloeassistant/cpa-plugin-auto-router
+module github.com/kamushadenes/cpa-plugin-auto-router
 
 go 1.27
 

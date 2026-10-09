@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/decide"
 )
 
 func TestIDPrecedence(t *testing.T) {

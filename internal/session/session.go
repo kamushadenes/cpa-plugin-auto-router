@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/decide"
 	"github.com/tidwall/gjson"
 )
 

@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/snippet"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/snippet"
 )
 
 func TestDecideSendsCalibratedQuestionMapAndParsesFactors(t *testing.T) {
