@@ -4,6 +4,7 @@ import copy
 import io
 import json
 from pathlib import Path
+from urllib.error import HTTPError
 import zipfile
 
 import pytest
@@ -447,3 +448,22 @@ def test_fallback_fetches_only_missing_required_benchmarks():
         },
     ) == []
     assert no_calls == []
+
+
+def test_fallback_page_failure_keeps_sibling_pages_and_names_url(caplog):
+    fixture_fetch, _ = _fixture_fetch()
+    failing = SOURCE_URLS["scale"] + "sweatlas-qna"
+
+    def one_page_missing(url: str, key: str | None = None) -> bytes:
+        if url == failing:
+            raise HTTPError(url, 404, "Not Found", {}, None)
+        return fixture_fetch(url, key)
+
+    rows = sources.fallback(one_page_missing, set())
+    assert {row.bench for row in rows} == {
+        "terminal-bench-4",
+        "swe-bench-pro-v2",
+        "swe-atlas-test-writing",
+        "swe-atlas-refactoring",
+    }
+    assert f"source failed: fallback swe-atlas-qna: {failing}: HTTP Error 404: Not Found" in caplog.text
