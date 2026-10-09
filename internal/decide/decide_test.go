@@ -3,7 +3,7 @@ package decide
 import (
 	"testing"
 
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/table"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/table"
 )
 
 func tbl(models map[string]table.Model) *table.Table {

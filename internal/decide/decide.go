@@ -4,7 +4,7 @@ import (
 	"errors"
 	"sort"
 
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/table"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/table"
 )
 
 const (

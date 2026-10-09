@@ -12,11 +12,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/decide"
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/jev"
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/session"
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/snippet"
-	"github.com/chloeassistant/cpa-plugin-auto-router/internal/table"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/decide"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/jev"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/session"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/snippet"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/table"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
 	"gopkg.in/yaml.v3"
@@ -221,8 +221,8 @@ func pluginRegistration() registration {
 		Metadata: pluginapi.Metadata{
 			Name:             "auto-router",
 			Version:          "0.1.7",
-			Author:           "chloeassistant",
-			GitHubRepository: "https://github.com/chloeassistant/cpa-plugin-auto-router",
+			Author:           "kamushadenes",
+			GitHubRepository: "https://github.com/kamushadenes/cpa-plugin-auto-router",
 			ConfigFields: []pluginapi.ConfigField{
 				{Name: "enabled", Type: pluginapi.ConfigFieldTypeBoolean, Description: "Enable auto-router requests."},
 				{Name: "jev_api_key_env", Type: pluginapi.ConfigFieldTypeString, Description: "Environment variable containing the Jev API key."},

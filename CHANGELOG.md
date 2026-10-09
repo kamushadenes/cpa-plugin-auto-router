@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - The weekly updater unit now publishes its table to production and hot-reloads it without a restart.
+- The Go module path and plugin metadata now name `kamushadenes/cpa-plugin-auto-router` after the repository transfer.
 
 ### Fixed
 - Retried a transient 404 from the terminal-bench and Scale leaderboard pages instead of dropping that week's benchmark update.
