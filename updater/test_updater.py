@@ -26,6 +26,52 @@ def row(*args):
     return sources.Row(*args)
 
 
+def test_fetch_retries_transient_404_before_raising(monkeypatch):
+    """tbench.ai and labs.scale.com have been observed to serve a momentary
+    404 on an otherwise-live, unchanged page (edge-cache miss); fetch must
+    retry a 404 like it already retries 429/5xx instead of failing the whole
+    fallback source on the first blip."""
+    from urllib.error import HTTPError
+
+    monkeypatch.setattr(cli.time, "sleep", lambda _seconds: None)
+    calls = {"n": 0}
+
+    class _FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def read(self):
+            return b"ok"
+
+    class _FakeOpener:
+        def open(self, request, timeout):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise HTTPError(request.full_url, 404, "Not Found", {}, None)
+            return _FakeResponse()
+
+    monkeypatch.setattr(cli, "_opener", lambda authenticated: _FakeOpener())
+    assert cli.fetch("https://www.tbench.ai/") == b"ok"
+    assert calls["n"] == 2
+
+
+def test_fetch_raises_after_exhausting_retries_on_persistent_404(monkeypatch):
+    from urllib.error import HTTPError
+
+    monkeypatch.setattr(cli.time, "sleep", lambda _seconds: None)
+
+    class _FakeOpener:
+        def open(self, request, timeout):
+            raise HTTPError(request.full_url, 404, "Not Found", {}, None)
+
+    monkeypatch.setattr(cli, "_opener", lambda authenticated: _FakeOpener())
+    with pytest.raises(HTTPError):
+        cli.fetch("https://www.tbench.ai/")
+
+
 
 
 def test_load_exposes_typed_models_and_scores():

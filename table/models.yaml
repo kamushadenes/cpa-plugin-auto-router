@@ -1,4 +1,4 @@
-generated_at: '2026-09-25T03:36:50+00:00'
+generated_at: '2026-10-09T00:32:18+00:00'
 benchmarks:
   arena-webdev:
     source: hf:lmarena-ai/leaderboard-dataset/webdev
@@ -70,961 +70,36 @@ benchmarks:
     source: https://epoch.ai/data/benchmark_data.zip#frontiercode_external.csv
     unit: pct
 models:
-  gpt-5.6-sol:
-    tier: top
-    vision: true
-    cost:
-      input: 2.0
-      output: 10.0
-    context_window: 1050000
-    scores:
-      terminal-bench-4:
-      - effort: max
-        value: 27.778
-        margin: 1.821
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-security:
-      - effort: max
-        value: 53.333
-        margin: 6.667
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-software:
-      - effort: max
-        value: 29.63
-        margin: 1.852
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      gpqa-diamond:
-      - effort: null
-        value: 91.91915
-        margin: 0.5050500000000013
-        date: '2026-09-01'
-        note: openrouter; published standard deviation
-      deepswe:
-      - effort: max
-        value: 72.66666666666667
-        margin: 2.829822249837175
-        date: '2026-07-09'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: xhigh
-        value: 70.73170731707317
-        margin: 0.8191117217343103
-        date: '2026-07-09'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: high
-        value: 69.40133037694012
-        margin: 1.4321452203772356
-        date: '2026-07-09'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: medium
-        value: 61.06194690265486
-        margin: 1.583357649307215
-        date: '2026-07-09'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: low
-        value: 45.35398230088495
-        margin: 2.38819467145892
-        date: '2026-07-09'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      arena-webdev:
-      - effort: xhigh
-        value: 1617.1376709056278
-        margin: 6.41425295443139
-        date: '2026-09-24'
-        note: arena:webdev; published rating lower/upper interval
-      arena-overall:
-      - effort: xhigh
-        value: 1483.474347288669
-        margin: 4.893471974474551
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-coding:
-      - effort: xhigh
-        value: 1527.94852213375
-        margin: 7.689323411077908
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-creative-writing:
-      - effort: xhigh
-        value: 1473.064088264494
-        margin: 9.094300028982275
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-hard-prompts:
-      - effort: xhigh
-        value: 1508.6233018445653
-        margin: 5.719348502801495
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-instruction-following:
-      - effort: xhigh
-        value: 1486.90308552251
-        margin: 7.104041891279394
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-math:
-      - effort: xhigh
-        value: 1488.0515297665895
-        margin: 16.7987051626086
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-agent:
-      - effort: xhigh
-        value: 62.00385655809345
-        margin: 12.48311994597448
-        date: '2026-09-24'
-        note: arena:agent; published score_ci lower/upper interval; score x1000
-      swe-bench-pro-v2:
-      - effort: xhigh
-        value: 95.5
-        margin: 1.4
-        date: '2026-09-22'
-        note: scale; reported confidenceInterval_upper
-      swe-atlas-qna:
-      - effort: xhigh
-        value: 46.0
-        margin: 5.0
-        date: '2026-03-02'
-        note: scale; reported confidenceInterval_upper
-      swe-atlas-test-writing:
-      - effort: xhigh
-        value: 45.9
-        margin: 6.0
-        date: '2026-07-28'
-        note: scale; reported confidenceInterval_upper
-  claude-opus-5-5:
-    tier: top
-    vision: true
-    cost:
-      input: 4.0
-      output: 20.0
-    context_window: 1000000
-    scores:
-      terminal-bench-4:
-      - effort: null
-        value: 61.616
-        margin: 1.01
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-security:
-      - effort: null
-        value: 66.667
-        margin: 6.667
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-software:
-      - effort: null
-        value: 53.704
-        margin: 1.852
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      arena-webdev:
-      - effort: max
-        value: 1818.4080843495262
-        margin: 21.13758326287973
-        date: '2026-09-24'
-        note: arena:webdev; published rating lower/upper interval
-  gpt-6-luna:
-    tier: mid
-    vision: true
-    cost:
-      input: 0.1
-      output: 0.5
-    context_window: 1050000
-    scores:
-      gpqa-diamond:
-      - effort: null
-        value: 87.48596666666667
-        margin: 0.619849967510062
-        date: '2026-09-23'
-        note: openrouter; published standard deviation
-  gpt-6-astra:
-    tier: top
-    vision: true
-    cost:
-      input: 10.0
-      output: 50.0
-    context_window: 1050000
-    scores:
-      terminal-bench-4:
-      - effort: max
-        value: 57.071
-        margin: 3.072
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-security:
-      - effort: max
-        value: 53.333
-        margin: 6.667
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-software:
-      - effort: max
-        value: 55.556
-        margin: 3.208
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      gpqa-diamond:
-      - effort: null
-        value: 94.36415317919074
-        margin: 0.20135000000000014
-        date: '2026-09-06'
-        note: openrouter; published standard deviation
-      deepswe:
-      - effort: xhigh
-        value: 74.11504424778761
-        margin: 2.865396174075141
-        date: '2026-09-03'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: high
-        value: 73.23008849557522
-        margin: 3.423496057873005
-        date: '2026-09-03'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: max
-        value: 73.23008849557522
-        margin: 0.8303197562056527
-        date: '2026-09-03'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: medium
-        value: 72.78761061946902
-        margin: 2.5896490818318694
-        date: '2026-09-03'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: low
-        value: 67.03539823008849
-        margin: 1.3008610516858732
-        date: '2026-09-03'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      arena-webdev:
-      - effort: max
-        value: 1792.1796354686667
-        margin: 12.042708093900501
-        date: '2026-09-24'
-        note: arena:webdev; published rating lower/upper interval
-      arena-overall:
-      - effort: max
-        value: 1479.7712562096513
-        margin: 11.650217228947668
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-coding:
-      - effort: max
-        value: 1542.8813549049876
-        margin: 23.45828093389639
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-creative-writing:
-      - effort: max
-        value: 1460.7153654674223
-        margin: 25.956806539114382
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-hard-prompts:
-      - effort: max
-        value: 1497.0451560147628
-        margin: 14.662798387915245
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-instruction-following:
-      - effort: max
-        value: 1460.9542725522551
-        margin: 20.39768714702268
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-agent:
-      - effort: max
-        value: 110.81569670402496
-        margin: 22.92675424943401
-        date: '2026-09-24'
-        note: arena:agent; published score_ci lower/upper interval; score x1000
-      swe-bench-pro-v2:
-      - effort: high
-        value: 96.9
-        margin: 1.1
-        date: '2026-09-22'
-        note: scale; reported confidenceInterval_upper
-      swe-atlas-qna:
-      - effort: xhigh
-        value: 59.14
-        margin: 4.88
-        date: '2026-09-09'
-        note: scale; reported confidenceInterval_upper
-      swe-atlas-test-writing:
-      - effort: xhigh
-        value: 50.74
-        margin: 5.91
-        date: '2026-09-09'
-        note: scale; reported confidenceInterval_upper
-      swe-atlas-refactoring:
-      - effort: xhigh
-        value: 59.05
-        margin: 6.43
-        date: '2026-09-09'
-        note: scale; reported confidenceInterval_upper
-  claude-sonnet-5:
-    tier: mid
-    vision: true
-    cost:
-      input: 2.0
-      output: 10.0
-    context_window: 1000000
-    scores:
-      terminal-bench-4:
-      - effort: null
-        value: 8.081
-        margin: 1.821
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-security:
-      - effort: null
-        value: 0.0
-        margin: 0.0
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-software:
-      - effort: null
-        value: 14.815
-        margin: 4.9
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      gpqa-diamond:
-      - effort: null
-        value: 82.31076774193549
-        margin: 4.00712127273121
-        date: '2026-09-19'
-        note: openrouter; published standard deviation
-      deepswe:
-      - effort: max
-        value: 53.84615384615385
-        margin: 4.2369164701743856
-        date: '2026-06-30'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: xhigh
-        value: 49.667405764966745
-        margin: 3.4545489916778647
-        date: '2026-06-30'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: high
-        value: 48.23008849557522
-        margin: 4.50631487021484
-        date: '2026-06-30'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: medium
-        value: 39.77777777777778
-        margin: 3.127576206329727
-        date: '2026-06-30'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: low
-        value: 30.51224944320713
-        margin: 1.1260175414427496
-        date: '2026-06-30'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      arena-webdev:
-      - effort: high
-        value: 1538.225548347194
-        margin: 6.613952820215445
-        date: '2026-09-24'
-        note: arena:webdev; published rating lower/upper interval
-      arena-overall:
-      - effort: high
-        value: 1461.2069551775312
-        margin: 4.583384953200948
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-coding:
-      - effort: high
-        value: 1520.4702750171232
-        margin: 6.992767677065672
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-creative-writing:
-      - effort: high
-        value: 1436.9833594153185
-        margin: 8.106796375919316
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-hard-prompts:
-      - effort: high
-        value: 1488.6961856771577
-        margin: 5.261481440190892
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-instruction-following:
-      - effort: high
-        value: 1464.864927300117
-        margin: 6.334440481685874
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-math:
-      - effort: high
-        value: 1475.557792311987
-        margin: 15.243725101606856
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-agent:
-      - effort: high
-        value: 48.358741281527
-        margin: 15.909363253507228
-        date: '2026-09-24'
-        note: arena:agent; published score_ci lower/upper interval; score x1000
-      swe-bench-pro-v2:
-      - effort: xhigh
-        value: 93.15
-        margin: 1.71
-        date: '2026-09-22'
-        note: scale; reported confidenceInterval_upper
-  kimi-k3:
-    tier: mid
-    vision: true
-    cost:
-      input: 2.85
-      output: 14.25
-    context_window: 1048576
-    scores:
-      terminal-bench-4:
-      - effort: max
-        value: 12.626
-        margin: 1.01
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-security:
-      - effort: max
-        value: 20.0
-        margin: 0.0
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-software:
-      - effort: max
-        value: 22.222
-        margin: 0.0
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      gpqa-diamond:
-      - effort: null
-        value: 91.85987869565217
-        margin: 1.3465663103476455
-        date: '2026-09-19'
-        note: openrouter; published standard deviation
-      deepswe:
-      - effort: max
-        value: 68.51441241685144
-        margin: 4.53701407928232
-        date: '2026-07-16'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      arena-webdev:
-      - effort: max
-        value: 1659.5717658088586
-        margin: 6.840194466720504
-        date: '2026-09-24'
-        note: arena:webdev; published rating lower/upper interval
-      arena-overall:
-      - effort: max
-        value: 1484.7659884633672
-        margin: 5.22569143478222
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-coding:
-      - effort: max
-        value: 1538.421228697794
-        margin: 8.553834863571183
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-creative-writing:
-      - effort: max
-        value: 1458.444323512738
-        margin: 10.002300261426626
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-hard-prompts:
-      - effort: max
-        value: 1514.1352616085178
-        margin: 6.08710076943521
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-instruction-following:
-      - effort: max
-        value: 1483.7276951141941
-        margin: 7.732913239546519
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-math:
-      - effort: max
-        value: 1500.6373175918143
-        margin: 19.891295407906796
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      swe-bench-pro-v2:
-      - effort: max
-        value: 97.7
-        margin: 0.9
-        date: '2026-09-22'
-        note: scale; reported confidenceInterval_upper
-  mimo-v2.6-flash:
-    tier: flash
-    vision: true
-    cost:
-      input: 0.14
-      output: 0.28
-    context_window: 1048576
-    scores:
-      terminal-bench-4:
-      - effort: null
-        value: 21.212
-        margin: 1.75
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-security:
-      - effort: null
-        value: 33.333
-        margin: 17.638
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-software:
-      - effort: null
-        value: 27.778
-        margin: 3.208
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-  gpt-5.6-terra:
-    tier: mid
-    vision: true
-    cost:
-      input: 2.0
-      output: 12.0
-    context_window: 1050000
-    scores:
-      terminal-bench-4:
-      - effort: max
-        value: 26.263
-        margin: 0.505
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-security:
-      - effort: max
-        value: 46.667
-        margin: 13.333
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-software:
-      - effort: max
-        value: 27.778
-        margin: 3.208
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      gpqa-diamond:
-      - effort: null
-        value: 88.97304999999999
-        margin: 0.5892499999999967
-        date: '2026-09-01'
-        note: openrouter; published standard deviation
-      deepswe:
-      - effort: max
-        value: 69.62305986696231
-        margin: 2.5569389504458404
-        date: '2026-07-09'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: xhigh
-        value: 60.17699115044248
-        margin: 2.1242972019271256
-        date: '2026-07-09'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: high
-        value: 53.76106194690266
-        margin: 4.328970467213552
-        date: '2026-07-09'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: medium
-        value: 35.11111111111111
-        margin: 3.3819643034066322
-        date: '2026-07-09'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: low
-        value: 24.053452115812917
-        margin: 0.7767613669447833
-        date: '2026-07-09'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      arena-webdev:
-      - effort: xhigh
-        value: 1518.7812325910738
-        margin: 7.068274354174832
-        date: '2026-09-24'
-        note: arena:webdev; published rating lower/upper interval
-      arena-overall:
-      - effort: xhigh
-        value: 1466.0372736853974
-        margin: 4.828068206674516
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-coding:
-      - effort: xhigh
-        value: 1517.933705578711
-        margin: 7.550867153265585
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-creative-writing:
-      - effort: xhigh
-        value: 1426.418699336087
-        margin: 8.82111770734366
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-hard-prompts:
-      - effort: xhigh
-        value: 1489.0873362251402
-        margin: 5.622654682482562
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-instruction-following:
-      - effort: xhigh
-        value: 1462.1113426443237
-        margin: 6.902240412117635
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-math:
-      - effort: xhigh
-        value: 1475.487743206171
-        margin: 16.921640394533597
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      swe-bench-pro-v2:
-      - effort: xhigh
-        value: 92.37
-        margin: 1.81
-        date: '2026-09-22'
-        note: scale; reported confidenceInterval_upper
-  claude-opus-5:
-    tier: top
-    vision: true
-    cost:
-      input: 5.0
-      output: 25.0
-    context_window: 1000000
-    scores:
-      terminal-bench-4:
-      - effort: null
-        value: 45.455
-        margin: 2.624
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-security:
-      - effort: null
-        value: 73.333
-        margin: 6.667
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-software:
-      - effort: null
-        value: 38.889
-        margin: 3.208
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      gpqa-diamond:
-      - effort: null
-        value: 87.18132857142858
-        margin: 1.9948544420327932
-        date: '2026-09-19'
-        note: openrouter; published standard deviation
-      deepswe:
-      - effort: max
-        value: 73.64864864864865
-        margin: 3.872310426371729
-        date: '2026-07-24'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: xhigh
-        value: 73.15436241610739
-        margin: 3.0609818216384643
-        date: '2026-07-24'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: high
-        value: 72.82850779510022
-        margin: 1.9454321571601496
-        date: '2026-07-24'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: medium
-        value: 68.90380313199105
-        margin: 1.1725586658930944
-        date: '2026-07-24'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      - effort: low
-        value: 58.12917594654788
-        margin: 2.3306879466842725
-        date: '2026-07-24'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      arena-webdev:
-      - effort: max
-        value: 1692.4435144973606
-        margin: 6.887154139682593
-        date: '2026-09-24'
-        note: arena:webdev; published rating lower/upper interval
-      - effort: high
-        value: 1661.6885872728221
-        margin: 6.09907189005321
-        date: '2026-09-24'
-        note: arena:webdev; published rating lower/upper interval
-      arena-overall:
-      - effort: high
-        value: 1492.8999328031769
-        margin: 4.231241755994233
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      - effort: max
-        value: 1487.3640295197229
-        margin: 5.491458835273079
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-coding:
-      - effort: high
-        value: 1533.278132586031
-        margin: 6.9631268512077895
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      - effort: max
-        value: 1525.8925538598792
-        margin: 8.777459462459092
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-creative-writing:
-      - effort: high
-        value: 1474.031847031972
-        margin: 7.703659010616434
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      - effort: max
-        value: 1471.8789429265282
-        margin: 9.943171741767628
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-hard-prompts:
-      - effort: high
-        value: 1517.2966861960983
-        margin: 5.159134182414618
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      - effort: max
-        value: 1512.0460839647878
-        margin: 6.399845457731203
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-instruction-following:
-      - effort: high
-        value: 1499.3612522906512
-        margin: 6.392978717831511
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      - effort: max
-        value: 1493.1744185053897
-        margin: 7.960080498570051
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-math:
-      - effort: high
-        value: 1524.8150357288275
-        margin: 14.54362423321595
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      - effort: max
-        value: 1523.1122054331358
-        margin: 19.73036364505606
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-agent:
-      - effort: high
-        value: 98.23291892281006
-        margin: 13.54679706312073
-        date: '2026-09-24'
-        note: arena:agent; published score_ci lower/upper interval; score x1000
-      - effort: max
-        value: 95.39111583897768
-        margin: 14.631768762576714
-        date: '2026-09-24'
-        note: arena:agent; published score_ci lower/upper interval; score x1000
-      swe-bench-pro-v2:
-      - effort: xhigh
-        value: 99.4
-        margin: 0.4
-        date: '2026-09-22'
-        note: scale; reported confidenceInterval_upper
-      swe-atlas-qna:
-      - effort: xhigh
-        value: 63.17
-        margin: 5.01
-        date: '2026-08-04'
-        note: scale; reported confidenceInterval_upper
-      swe-atlas-test-writing:
-      - effort: xhigh
-        value: 62.22
-        margin: 5.58
-        date: '2026-08-04'
-        note: scale; reported confidenceInterval_upper
-  minimax-m3:
-    tier: mid
-    vision: true
-    cost:
-      input: 0.28
-      output: 1.1
-    context_window: 524288
-    scores:
-      gpqa-diamond:
-      - effort: null
-        value: 90.56333457943924
-        margin: 2.007868381757514
-        date: '2026-09-19'
-        note: openrouter; published standard deviation
-      arena-webdev:
-      - effort: null
-        value: 1485.0729545345882
-        margin: 6.050530743450054
-        date: '2026-09-24'
-        note: arena:webdev; published rating lower/upper interval
-      arena-overall:
-      - effort: null
-        value: 1441.2503431504656
-        margin: 4.211783653544444
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-coding:
-      - effort: null
-        value: 1496.266527235419
-        margin: 6.257445825723607
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-creative-writing:
-      - effort: null
-        value: 1406.0870386973315
-        margin: 7.51384402750773
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-hard-prompts:
-      - effort: null
-        value: 1462.815708839742
-        margin: 4.90175181087784
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-instruction-following:
-      - effort: null
-        value: 1434.1242701063009
-        margin: 5.832231206286679
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-math:
-      - effort: null
-        value: 1434.4493794945809
-        margin: 12.816839515576476
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-  glm-5.3-flash:
-    tier: flash
-    vision: true
-    cost:
-      input: 0.15
-      output: 0.5
-    context_window: 1048576
-    scores:
-      terminal-bench-4:
-      - effort: max
-        value: 19.697
-        margin: 0.875
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-security:
-      - effort: max
-        value: 26.667
-        margin: 6.667
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      terminal-bench-4-software:
-      - effort: max
-        value: 9.259
-        margin: 1.852
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      gpqa-diamond:
-      - effort: null
-        value: 86.06902500000001
-        margin: 1.6032128732251991
-        date: '2026-09-19'
-        note: openrouter; published standard deviation
-      deepswe:
-      - effort: max
-        value: 63.39285714285714
-        margin: 4.377970751693644
-        date: '2026-08-20'
-        note: epoch:deepswe_external.csv; published 95% CI half-width
-      arena-webdev:
-      - effort: null
-        value: 1612.025822795403
-        margin: 8.959643212384435
-        date: '2026-09-24'
-        note: arena:webdev; published rating lower/upper interval
-      arena-overall:
-      - effort: null
-        value: 1475.4044535618318
-        margin: 6.560988072806595
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-coding:
-      - effort: null
-        value: 1525.0944543724302
-        margin: 11.877650000591416
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-creative-writing:
-      - effort: null
-        value: 1434.9144730960675
-        margin: 13.466477073140823
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-hard-prompts:
-      - effort: null
-        value: 1497.9316890647813
-        margin: 7.8966333964173145
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-instruction-following:
-      - effort: null
-        value: 1470.8438703272745
-        margin: 10.388606961777441
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      arena-math:
-      - effort: null
-        value: 1513.3255540940822
-        margin: 28.069441450788986
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
   claude-fable-5:
     tier: top
     vision: true
     cost:
       input: 10.0
       output: 50.0
-    context_window: 1000000
     scores:
       terminal-bench-4:
       - effort: null
-        value: 22.727
-        margin: 0.875
-        date: '2026-09-22'
+        value: 41.414
+        margin: 1.336
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       terminal-bench-4-security:
       - effort: null
-        value: 46.667
-        margin: 6.667
-        date: '2026-09-22'
+        value: 60.0
+        margin: 0.0
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       terminal-bench-4-software:
       - effort: null
-        value: 16.667
+        value: 38.889
         margin: 3.208
-        date: '2026-09-22'
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       gpqa-diamond:
       - effort: null
-        value: 84.5117875
-        margin: 4.1655965177383365
-        date: '2026-09-19'
+        value: 85.45454
+        margin: 4.176428250119952
+        date: '2026-10-03'
         note: openrouter; published standard deviation
       deepswe:
       - effort: xhigh
@@ -1054,9 +129,9 @@ models:
         note: epoch:deepswe_external.csv; published 95% CI half-width
       arena-webdev:
       - effort: high
-        value: 1626.8275806213235
-        margin: 6.9477658422898685
-        date: '2026-09-24'
+        value: 1624.0926420053343
+        margin: 6.358067513247761
+        date: '2026-10-06'
         note: arena:webdev; published rating lower/upper interval
       - effort: null
         value: 1626.26
@@ -1064,46 +139,46 @@ models:
         date: '2026-06-09'
         note: epoch:webdev_arena_external.csv; published 95% CI bounds
       arena-overall:
-      - effort: null
-        value: 1505.6827180827381
-        margin: 4.764086342051769
-        date: '2026-09-13'
+      - effort: high
+        value: 1504.270990068727
+        margin: 4.389257862600402
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-coding:
-      - effort: null
-        value: 1552.3947882844711
-        margin: 7.449215259246898
-        date: '2026-09-13'
+      - effort: high
+        value: 1551.848586023319
+        margin: 6.811573470788744
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-creative-writing:
-      - effort: null
-        value: 1504.1344031285366
-        margin: 8.601050786651172
-        date: '2026-09-13'
+      - effort: high
+        value: 1502.572777815691
+        margin: 7.662925634286921
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-hard-prompts:
-      - effort: null
-        value: 1532.1427781355035
-        margin: 5.499922708289205
-        date: '2026-09-13'
+      - effort: high
+        value: 1530.279372919214
+        margin: 5.069525847105183
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-instruction-following:
-      - effort: null
-        value: 1511.295459403484
-        margin: 6.75311192028073
-        date: '2026-09-13'
+      - effort: high
+        value: 1509.2523922023709
+        margin: 6.149913844485241
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-math:
-      - effort: null
-        value: 1526.2827433701275
-        margin: 15.55490574985879
-        date: '2026-09-13'
+      - effort: high
+        value: 1522.2515487178898
+        margin: 13.717852293165834
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-agent:
       - effort: high
-        value: 83.70510408836773
-        margin: 12.222444553099718
-        date: '2026-09-24'
+        value: 82.12369773489381
+        margin: 12.167532577229135
+        date: '2026-10-02'
         note: arena:agent; published score_ci lower/upper interval; score x1000
       swe-atlas-test-writing:
       - effort: xhigh
@@ -1117,222 +192,743 @@ models:
         margin: 6.76
         date: '2026-06-11'
         note: scale; reported confidenceInterval_upper
-  qwen-3.8-flash-next:
-    tier: flash
+    context_window: 1000000
+  claude-fable-5-1:
+    tier: top
     vision: true
     cost:
-      input: 0.2
-      output: 0.5
-    context_window: 262144
+      input: 10.0
+      output: 50.0
     scores:
+      terminal-bench-4:
+      - effort: null
+        value: 58.081
+        margin: 3.312
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: null
+        value: 80.0
+        margin: 0.0
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: null
+        value: 55.556
+        margin: 3.208
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      gpqa-diamond:
+      - effort: null
+        value: 89.93263999999999
+        margin: 0.6511664598242117
+        date: '2026-10-01'
+        note: openrouter; published standard deviation
       arena-webdev:
-      - effort: null
-        value: 1636.2726556223574
-        margin: 10.241826754656245
-        date: '2026-09-24'
+      - effort: max
+        value: 1744.8055578702638
+        margin: 9.450825015592045
+        date: '2026-10-06'
         note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: max
+        value: 1501.1356497681938
+        margin: 6.404826794197447
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: max
+        value: 1531.2296397524656
+        margin: 12.532560888274816
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: max
+        value: 1481.7727852039911
+        margin: 12.51524715181813
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: max
+        value: 1520.3818022577007
+        margin: 7.739116800499346
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: max
+        value: 1497.4553929059336
+        margin: 10.560975337809396
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-math:
+      - effort: max
+        value: 1518.2030093983499
+        margin: 24.837025525366016
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
       arena-agent:
-      - effort: null
-        value: -5.130255801565171
-        margin: 6.551489451776761
-        date: '2026-09-24'
+      - effort: max
+        value: 143.10371476177605
+        margin: 18.95217172075439
+        date: '2026-10-02'
         note: arena:agent; published score_ci lower/upper interval; score x1000
-  qwen-3.8-max:
+      swe-bench-pro-v2:
+      - effort: high
+        value: 99.1
+        margin: 0.5
+        date: '2026-10-07'
+        note: scale; reported confidenceInterval_upper
+      swe-atlas-qna:
+      - effort: xhigh
+        value: 59.95
+        margin: 4.85
+        date: '2026-03-02'
+        note: scale; reported confidenceInterval_upper
+      swe-atlas-test-writing:
+      - effort: xhigh
+        value: 67.04
+        margin: 5.33
+        date: '2026-09-02'
+        note: scale; reported confidenceInterval_upper
+      swe-atlas-refactoring:
+      - effort: xhigh
+        value: 56.67
+        margin: 6.52
+        date: '2026-09-02'
+        note: scale; reported confidenceInterval_upper
+    context_window: 1000000
+  claude-haiku-5-5:
     tier: mid
     vision: true
     cost:
-      input: 1.65
-      output: 4.951
-    context_window: 256000
+      input: 0.1
+      output: 0.5
+    scores:
+      gpqa-diamond:
+      - effort: null
+        value: 86.5881
+        margin: 1.1527973831800054
+        date: '2026-10-08'
+        note: openrouter; published standard deviation
+      swe-bench-pro-v2:
+      - effort: high
+        value: 87.23
+        margin: 2.36
+        date: '2026-10-08'
+        note: scale; reported confidenceInterval_upper
+    context_window: 1000000
+  claude-opus-5:
+    tier: top
+    vision: true
+    cost:
+      input: 5.0
+      output: 25.0
     scores:
       terminal-bench-4:
-      - effort: max
-        value: 24.747
+      - effort: null
+        value: 53.535
         margin: 1.336
-        date: '2026-09-22'
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       terminal-bench-4-security:
-      - effort: max
-        value: 26.667
-        margin: 6.667
-        date: '2026-09-22'
+      - effort: null
+        value: 100.0
+        margin: 0.0
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       terminal-bench-4-software:
-      - effort: max
-        value: 31.481
-        margin: 1.852
-        date: '2026-09-22'
-        note: eee:vals-ai; published standard error
-      arena-webdev:
       - effort: null
-        value: 1660.5849055666995
-        margin: 9.422535217901668
-        date: '2026-09-24'
+        value: 44.444
+        margin: 0.0
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      gpqa-diamond:
+      - effort: null
+        value: 87.46725555555557
+        margin: 1.8426695846040053
+        date: '2026-10-03'
+        note: openrouter; published standard deviation
+      deepswe:
+      - effort: max
+        value: 73.64864864864865
+        margin: 3.872310426371729
+        date: '2026-07-24'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: xhigh
+        value: 73.15436241610739
+        margin: 3.0609818216384643
+        date: '2026-07-24'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: high
+        value: 72.82850779510022
+        margin: 1.9454321571601496
+        date: '2026-07-24'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: medium
+        value: 68.90380313199105
+        margin: 1.1725586658930944
+        date: '2026-07-24'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: low
+        value: 58.12917594654788
+        margin: 2.3306879466842725
+        date: '2026-07-24'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      arena-webdev:
+      - effort: max
+        value: 1691.77128158191
+        margin: 6.398970117416184
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      - effort: high
+        value: 1657.7025161385118
+        margin: 5.644398247616891
+        date: '2026-10-06'
         note: arena:webdev; published rating lower/upper interval
       arena-overall:
+      - effort: high
+        value: 1489.7441630742715
+        margin: 3.804125526187704
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      - effort: max
+        value: 1489.4940018458387
+        margin: 4.9620150158275464
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: high
+        value: 1533.4204038407572
+        margin: 6.281173866302538
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      - effort: max
+        value: 1529.7234289874664
+        margin: 7.7999370087785564
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: high
+        value: 1471.389495647395
+        margin: 6.842168775060827
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      - effort: max
+        value: 1470.5582170024918
+        margin: 8.61229434133486
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: high
+        value: 1515.243936805103
+        margin: 4.63555585724896
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      - effort: max
+        value: 1514.4217787511316
+        margin: 5.7798983261819785
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: high
+        value: 1496.0567161668519
+        margin: 5.74236312069138
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      - effort: max
+        value: 1492.6106840795997
+        margin: 7.031464822852172
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-math:
+      - effort: high
+        value: 1520.6658036181234
+        margin: 11.99847556635359
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      - effort: max
+        value: 1515.5319367376492
+        margin: 16.362644294955317
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-agent:
+      - effort: high
+        value: 86.71170926158608
+        margin: 14.094992114197291
+        date: '2026-10-02'
+        note: arena:agent; published score_ci lower/upper interval; score x1000
+      - effort: max
+        value: 79.23513870898408
+        margin: 14.748338190559137
+        date: '2026-10-02'
+        note: arena:agent; published score_ci lower/upper interval; score x1000
+      swe-bench-pro-v2:
+      - effort: xhigh
+        value: 99.4
+        margin: 0.4
+        date: '2026-10-07'
+        note: scale; reported confidenceInterval_upper
+      swe-atlas-qna:
+      - effort: xhigh
+        value: 63.17
+        margin: 5.01
+        date: '2026-08-04'
+        note: scale; reported confidenceInterval_upper
+      swe-atlas-test-writing:
+      - effort: xhigh
+        value: 62.22
+        margin: 5.58
+        date: '2026-08-04'
+        note: scale; reported confidenceInterval_upper
+    context_window: 1000000
+  claude-opus-5-5:
+    tier: top
+    vision: true
+    cost:
+      input: 4.0
+      output: 20.0
+    scores:
+      terminal-bench-4:
       - effort: null
-        value: 1480.5610977215138
-        margin: 5.79059162619501
-        date: '2026-09-13'
+        value: 65.152
+        margin: 0.0
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: null
+        value: 100.0
+        margin: 0.0
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: null
+        value: 57.407
+        margin: 1.852
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      gpqa-diamond:
+      - effort: null
+        value: 90.23569999999998
+        margin: 0.3367000000000009
+        date: '2026-10-03'
+        note: openrouter; published standard deviation
+      arena-webdev:
+      - effort: max
+        value: 1813.6003351106383
+        margin: 15.52219393293035
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+    context_window: 1000000
+  claude-sonnet-5:
+    tier: mid
+    vision: true
+    cost:
+      input: 2.0
+      output: 10.0
+    scores:
+      terminal-bench-4:
+      - effort: null
+        value: 9.596
+        margin: 1.01
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: null
+        value: 0.0
+        margin: 0.0
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: null
+        value: 11.111
+        margin: 6.415
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      gpqa-diamond:
+      - effort: null
+        value: 83.54408285280729
+        margin: 4.347465374261191
+        date: '2026-10-03'
+        note: openrouter; published standard deviation
+      deepswe:
+      - effort: max
+        value: 53.84615384615385
+        margin: 4.2369164701743856
+        date: '2026-06-30'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: xhigh
+        value: 49.667405764966745
+        margin: 3.4545489916778647
+        date: '2026-06-30'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: high
+        value: 48.23008849557522
+        margin: 4.50631487021484
+        date: '2026-06-30'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: medium
+        value: 39.77777777777778
+        margin: 3.127576206329727
+        date: '2026-06-30'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: low
+        value: 30.51224944320713
+        margin: 1.1260175414427496
+        date: '2026-06-30'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      arena-webdev:
+      - effort: high
+        value: 1540.859199850936
+        margin: 6.166478333907662
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: high
+        value: 1461.819473721467
+        margin: 4.208151311370216
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: high
+        value: 1518.682553542166
+        margin: 6.372723952810247
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: high
+        value: 1435.2114902091857
+        margin: 7.277875967050932
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: high
+        value: 1490.516130507621
+        margin: 4.88027116585954
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: high
+        value: 1466.6084200030582
+        margin: 5.7935730286197895
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-math:
+      - effort: high
+        value: 1473.5534635901427
+        margin: 13.137500959160434
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-agent:
+      - effort: high
+        value: 43.98503282950352
+        margin: 15.812143143684704
+        date: '2026-10-02'
+        note: arena:agent; published score_ci lower/upper interval; score x1000
+      swe-bench-pro-v2:
+      - effort: xhigh
+        value: 93.15
+        margin: 1.71
+        date: '2026-10-07'
+        note: scale; reported confidenceInterval_upper
+    context_window: 1000000
+  claude-sonnet-5-5:
+    tier: top
+    vision: true
+    cost:
+      input: 2.0
+      output: 10.0
+    scores:
+      terminal-bench-4:
+      - effort: null
+        value: 64.141
+        margin: 1.01
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: null
+        value: 93.333
+        margin: 6.667
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: null
+        value: 59.259
+        margin: 1.852
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      arena-webdev:
+      - effort: xhigh
+        value: 1772.7521327760383
+        margin: 15.428090081010168
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      - effort: high
+        value: 1716.018700416681
+        margin: 11.190865748682882
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: xhigh
+        value: 1471.0113283481612
+        margin: 10.430919881800264
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: xhigh
+        value: 1536.4027889203935
+        margin: 21.104064804736367
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: xhigh
+        value: 1447.422086410215
+        margin: 23.82048882834647
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: xhigh
+        value: 1504.0371257913941
+        margin: 13.131923606284658
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: xhigh
+        value: 1484.0196132204858
+        margin: 17.662078375852275
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-agent:
+      - effort: max
+        value: 125.20807893993158
+        margin: 30.91920429663459
+        date: '2026-10-02'
+        note: arena:agent; published score_ci lower/upper interval; score x1000
+    context_window: 1000000
+  deepseek-v4-flash:
+    tier: flash
+    vision: false
+    cost:
+      input: 0.09
+      output: 0.18
+    scores:
+      gpqa-diamond:
+      - effort: null
+        value: 85.83051666666667
+        margin: 1.1142254012192587
+        date: '2026-10-03'
+        note: openrouter; published standard deviation
+      arena-webdev:
+      - effort: high
+        value: 1430.2911106567635
+        margin: 6.938555338735796
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: high
+        value: 1438.4236478022349
+        margin: 4.113915298986512
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      - effort: null
+        value: 1436.0195582810732
+        margin: 4.045658363885991
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-coding:
       - effort: null
-        value: 1521.7560168805712
-        margin: 9.100615628899618
-        date: '2026-09-13'
+        value: 1484.1906663955679
+        margin: 6.227570802789842
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      - effort: high
+        value: 1479.5626493820157
+        margin: 6.264777468320858
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-creative-writing:
+      - effort: high
+        value: 1410.3392022306775
+        margin: 7.568718284122156
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
       - effort: null
-        value: 1471.531307882078
-        margin: 11.41524191834526
-        date: '2026-09-13'
+        value: 1408.1173107186996
+        margin: 7.5371102366519835
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-hard-prompts:
       - effort: null
-        value: 1502.6509183368735
-        margin: 6.692820887067796
-        date: '2026-09-13'
+        value: 1458.927675105219
+        margin: 4.764059867627793
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      - effort: high
+        value: 1457.9214960421123
+        margin: 4.833248974130697
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-instruction-following:
+      - effort: high
+        value: 1433.494575765541
+        margin: 5.882372213645112
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
       - effort: null
-        value: 1477.4272972142235
-        margin: 8.33393540550287
-        date: '2026-09-13'
+        value: 1428.0479131237848
+        margin: 5.812154667936852
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-math:
-      - effort: null
-        value: 1497.9414102574892
-        margin: 21.0053935518024
-        date: '2026-09-13'
+      - effort: high
+        value: 1441.2468596237136
+        margin: 11.895750745165515
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
-      arena-agent:
       - effort: null
-        value: 27.824145365296463
-        margin: 6.790373126006339
-        date: '2026-09-24'
-        note: arena:agent; published score_ci lower/upper interval; score x1000
+        value: 1425.0972976251892
+        margin: 11.792577367159993
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+    context_window: 1048576
   deepseek-v4-pro:
     tier: mid
     vision: false
     cost:
       input: 1.3
       output: 2.6
-    context_window: 1048576
     scores:
+      terminal-bench-4:
+      - effort: max
+        value: 11.111
+        margin: 1.336
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: max
+        value: 26.667
+        margin: 6.667
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: max
+        value: 22.222
+        margin: 3.208
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
       gpqa-diamond:
       - effort: null
-        value: 89.42333620253164
-        margin: 1.6976412073488587
-        date: '2026-09-19'
+        value: 86.17423749999999
+        margin: 1.4759203975295379
+        date: '2026-10-03'
         note: openrouter; published standard deviation
       arena-webdev:
       - effort: high
-        value: 1463.6001506359307
-        margin: 6.494768076361993
-        date: '2026-09-24'
+        value: 1463.695443382197
+        margin: 6.306658565223074
+        date: '2026-10-06'
         note: arena:webdev; published rating lower/upper interval
       - effort: null
-        value: 1445.4658831927852
-        margin: 6.4984069164197535
-        date: '2026-09-24'
+        value: 1446.399363814331
+        margin: 6.314184928246846
+        date: '2026-10-06'
         note: arena:webdev; published rating lower/upper interval
       arena-overall:
       - effort: high
-        value: 1454.710248662347
-        margin: 4.075924100099883
-        date: '2026-09-13'
+        value: 1454.9516838047946
+        margin: 3.975258653055903
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       - effort: null
-        value: 1457.3401876620214
-        margin: 4.004609727579691
-        date: '2026-09-13'
+        value: 1457.7609688780526
+        margin: 3.9048648628188403
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-coding:
       - effort: high
-        value: 1488.0541644421278
-        margin: 6.212059350645745
-        date: '2026-09-13'
+        value: 1487.9562070140614
+        margin: 6.09991434888434
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       - effort: null
-        value: 1501.4955833143335
-        margin: 6.060298510019379
-        date: '2026-09-13'
+        value: 1500.382829152481
+        margin: 5.931656782161554
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-creative-writing:
       - effort: null
-        value: 1443.9539585532889
-        margin: 7.486791673569996
-        date: '2026-09-13'
+        value: 1445.9606463389398
+        margin: 7.28317087234791
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       - effort: high
-        value: 1439.8594726626507
-        margin: 7.578301805094611
-        date: '2026-09-13'
+        value: 1440.721178291253
+        margin: 7.367409005244895
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-hard-prompts:
       - effort: high
-        value: 1473.7064837634805
-        margin: 4.743625779645754
-        date: '2026-09-13'
+        value: 1473.743045397118
+        margin: 4.650462863151006
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       - effort: null
-        value: 1479.801146749771
-        margin: 4.6832599206942405
-        date: '2026-09-13'
+        value: 1480.2023951837705
+        margin: 4.585880616596114
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-instruction-following:
       - effort: high
-        value: 1448.6007460589371
-        margin: 5.812188486533728
-        date: '2026-09-13'
+        value: 1448.0436920515049
+        margin: 5.677128395103523
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       - effort: null
-        value: 1452.550400150383
-        margin: 5.720155437824019
-        date: '2026-09-13'
+        value: 1452.373926143241
+        margin: 5.589554195013648
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-math:
       - effort: high
-        value: 1463.3649238847538
-        margin: 30.553876242978276
-        date: '2026-09-13'
+        value: 1457.3811348875156
+        margin: 27.76671176694208
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       - effort: null
-        value: 1444.6335835571062
-        margin: 11.50416510792843
-        date: '2026-09-13'
+        value: 1445.1994437038547
+        margin: 11.12861900232906
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
+    context_window: 1048576
   glm-5.3:
     tier: mid
     vision: false
     cost:
       input: 0.9
       output: 4.0
-    context_window: 1048576
     scores:
       terminal-bench-4:
       - effort: max
-        value: 25.253
-        margin: 1.336
-        date: '2026-09-22'
+        value: 38.889
+        margin: 1.821
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       terminal-bench-4-security:
       - effort: max
-        value: 33.333
-        margin: 6.667
-        date: '2026-09-22'
+        value: 60.0
+        margin: 0.0
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       terminal-bench-4-software:
       - effort: max
-        value: 11.111
-        margin: 0.0
-        date: '2026-09-22'
+        value: 35.185
+        margin: 4.9
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       gpqa-diamond:
       - effort: null
-        value: 85.8165
-        margin: 1.6424948356083193
-        date: '2026-09-19'
+        value: 85.40965
+        margin: 1.479397943703226
+        date: '2026-10-03'
         note: openrouter; published standard deviation
       deepswe:
       - effort: max
@@ -1342,83 +938,163 @@ models:
         note: epoch:deepswe_external.csv; published 95% CI half-width
       arena-webdev:
       - effort: max
-        value: 1621.842446071151
-        margin: 9.114898499833089
-        date: '2026-09-24'
+        value: 1622.2739832814027
+        margin: 8.01781976032521
+        date: '2026-10-06'
         note: arena:webdev; published rating lower/upper interval
       arena-overall:
       - effort: max
-        value: 1483.0179355440732
-        margin: 6.440416593935879
-        date: '2026-09-13'
+        value: 1478.49856297707
+        margin: 5.558139285822222
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-coding:
       - effort: max
-        value: 1524.010509205338
-        margin: 11.595272112052498
-        date: '2026-09-13'
+        value: 1520.6976943091458
+        margin: 9.380534959361967
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-creative-writing:
       - effort: max
-        value: 1462.382064512392
-        margin: 12.93674031529713
-        date: '2026-09-13'
+        value: 1453.9481714839558
+        margin: 10.256203770571688
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-hard-prompts:
       - effort: max
-        value: 1506.9295778439782
-        margin: 7.6838682457760115
-        date: '2026-09-13'
+        value: 1503.3887173564576
+        margin: 6.5144596282609655
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-instruction-following:
       - effort: max
-        value: 1480.372232557576
-        margin: 10.1108153605079
-        date: '2026-09-13'
+        value: 1475.6397487982877
+        margin: 8.263317915955554
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-math:
       - effort: max
-        value: 1504.0477679048313
-        margin: 27.009834222692348
-        date: '2026-09-13'
+        value: 1494.301772021041
+        margin: 20.862696547679207
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       swe-bench-pro-v2:
       - effort: max
         value: 95.6
         margin: 1.3
-        date: '2026-09-22'
+        date: '2026-10-07'
         note: scale; reported confidenceInterval_upper
+    context_window: 1048576
+  glm-5.3-flash:
+    tier: flash
+    vision: true
+    cost:
+      input: 0.15
+      output: 0.5
+    scores:
+      terminal-bench-4:
+      - effort: max
+        value: 19.697
+        margin: 0.875
+        date: '2026-09-27'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: max
+        value: 26.667
+        margin: 6.667
+        date: '2026-09-27'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: max
+        value: 9.259
+        margin: 1.852
+        date: '2026-09-27'
+        note: eee:vals-ai; published standard error
+      gpqa-diamond:
+      - effort: null
+        value: 85.69023333333334
+        margin: 1.6379967131292483
+        date: '2026-10-03'
+        note: openrouter; published standard deviation
+      deepswe:
+      - effort: max
+        value: 63.39285714285714
+        margin: 4.377970751693644
+        date: '2026-08-20'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      arena-webdev:
+      - effort: null
+        value: 1610.0303829171862
+        margin: 7.137473247945991
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: null
+        value: 1473.0004900163892
+        margin: 5.342659482358044
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: null
+        value: 1523.184037177733
+        margin: 8.350092711010348
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: null
+        value: 1433.3247774862834
+        margin: 9.364601500249137
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: null
+        value: 1500.1269353239359
+        margin: 6.256143560093278
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: null
+        value: 1471.7611743699285
+        margin: 7.509705449809758
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-math:
+      - effort: null
+        value: 1502.9125411099526
+        margin: 17.69236410161352
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+    context_window: 1048576
   gpt-5.6-luna:
     tier: mid
     vision: true
     cost:
       input: 0.2
       output: 1.2
-    context_window: 1050000
     scores:
       terminal-bench-4:
       - effort: max
-        value: 4.545
-        margin: 0.875
-        date: '2026-09-22'
+        value: 11.616
+        margin: 1.01
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       terminal-bench-4-security:
       - effort: max
-        value: 0.0
-        margin: 0.0
-        date: '2026-09-22'
+        value: 6.667
+        margin: 6.667
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       terminal-bench-4-software:
       - effort: max
-        value: 1.852
+        value: 14.815
         margin: 1.852
-        date: '2026-09-22'
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       gpqa-diamond:
       - effort: null
-        value: 87.71039999999999
-        margin: 0.6734000000000018
-        date: '2026-09-01'
+        value: 87.87876666666666
+        margin: 0.5991714074916774
+        date: '2026-10-01'
         note: openrouter; published standard deviation
       deepswe:
       - effort: max
@@ -1448,247 +1124,928 @@ models:
         note: epoch:deepswe_external.csv; published 95% CI half-width
       arena-webdev:
       - effort: xhigh
-        value: 1519.2524349217535
-        margin: 6.935576687752359
-        date: '2026-09-24'
+        value: 1519.9231660625292
+        margin: 6.46712126110242
+        date: '2026-10-06'
         note: arena:webdev; published rating lower/upper interval
       arena-overall:
       - effort: xhigh
-        value: 1452.4510036463553
-        margin: 4.809176010290457
-        date: '2026-09-13'
+        value: 1453.050254337715
+        margin: 4.3997047992722855
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-coding:
       - effort: xhigh
-        value: 1497.7149023723503
-        margin: 7.50525690687914
-        date: '2026-09-13'
+        value: 1501.3777656782042
+        margin: 6.827010324778598
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-creative-writing:
       - effort: xhigh
-        value: 1411.044841748006
-        margin: 8.936893549548017
-        date: '2026-09-13'
+        value: 1408.999823813769
+        margin: 7.845913175411965
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-hard-prompts:
       - effort: xhigh
-        value: 1472.5167716831493
-        margin: 5.600005104825755
-        date: '2026-09-13'
+        value: 1475.6436465434738
+        margin: 5.140935302800358
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-instruction-following:
       - effort: xhigh
-        value: 1442.2183880107614
-        margin: 6.8930036173728695
-        date: '2026-09-13'
+        value: 1444.8935967317975
+        margin: 6.234948544941517
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-math:
       - effort: xhigh
-        value: 1476.6310012257318
-        margin: 16.616381707919686
-        date: '2026-09-13'
+        value: 1476.809156772812
+        margin: 14.195600001375396
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
-  claude-fable-5-1:
+    context_window: 1050000
+  gpt-5.6-sol:
+    tier: top
+    vision: true
+    cost:
+      input: 2.0
+      output: 10.0
+    scores:
+      terminal-bench-4:
+      - effort: max
+        value: 37.879
+        margin: 0.0
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: max
+        value: 53.333
+        margin: 6.667
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: max
+        value: 46.296
+        margin: 1.852
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      gpqa-diamond:
+      - effort: null
+        value: 92.0875
+        margin: 0.47616570645102235
+        date: '2026-10-01'
+        note: openrouter; published standard deviation
+      deepswe:
+      - effort: max
+        value: 72.66666666666667
+        margin: 2.829822249837175
+        date: '2026-07-09'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: xhigh
+        value: 70.73170731707317
+        margin: 0.8191117217343103
+        date: '2026-07-09'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: high
+        value: 69.40133037694012
+        margin: 1.4321452203772356
+        date: '2026-07-09'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: medium
+        value: 61.06194690265486
+        margin: 1.583357649307215
+        date: '2026-07-09'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: low
+        value: 45.35398230088495
+        margin: 2.38819467145892
+        date: '2026-07-09'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      arena-webdev:
+      - effort: xhigh
+        value: 1617.7552145193836
+        margin: 6.063288712983876
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: xhigh
+        value: 1483.9380079535697
+        margin: 4.440955256914208
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: xhigh
+        value: 1533.5764371339596
+        margin: 6.947443105207412
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: xhigh
+        value: 1468.322331597444
+        margin: 7.980153577311057
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: xhigh
+        value: 1510.6088237544436
+        margin: 5.185180294483871
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: xhigh
+        value: 1490.2166904566798
+        margin: 6.344938102089031
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-math:
+      - effort: xhigh
+        value: 1493.961384804913
+        margin: 14.222465851395782
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-agent:
+      - effort: xhigh
+        value: 64.50039456435546
+        margin: 12.824181147629881
+        date: '2026-10-02'
+        note: arena:agent; published score_ci lower/upper interval; score x1000
+      swe-bench-pro-v2:
+      - effort: xhigh
+        value: 95.5
+        margin: 1.4
+        date: '2026-10-07'
+        note: scale; reported confidenceInterval_upper
+      swe-atlas-qna:
+      - effort: xhigh
+        value: 46.0
+        margin: 5.0
+        date: '2026-03-02'
+        note: scale; reported confidenceInterval_upper
+      swe-atlas-test-writing:
+      - effort: xhigh
+        value: 45.9
+        margin: 6.0
+        date: '2026-07-28'
+        note: scale; reported confidenceInterval_upper
+    context_window: 1050000
+  gpt-5.6-terra:
+    tier: mid
+    vision: true
+    cost:
+      input: 2.0
+      output: 12.0
+    scores:
+      terminal-bench-4:
+      - effort: max
+        value: 22.727
+        margin: 2.314
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: max
+        value: 40.0
+        margin: 0.0
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: max
+        value: 35.185
+        margin: 6.677
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      gpqa-diamond:
+      - effort: null
+        value: 88.77663333333334
+        margin: 0.5555502277522277
+        date: '2026-10-01'
+        note: openrouter; published standard deviation
+      deepswe:
+      - effort: max
+        value: 69.62305986696231
+        margin: 2.5569389504458404
+        date: '2026-07-09'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: xhigh
+        value: 60.17699115044248
+        margin: 2.1242972019271256
+        date: '2026-07-09'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: high
+        value: 53.76106194690266
+        margin: 4.328970467213552
+        date: '2026-07-09'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: medium
+        value: 35.11111111111111
+        margin: 3.3819643034066322
+        date: '2026-07-09'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: low
+        value: 24.053452115812917
+        margin: 0.7767613669447833
+        date: '2026-07-09'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      arena-webdev:
+      - effort: xhigh
+        value: 1521.5169317992804
+        margin: 6.608639877469614
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: xhigh
+        value: 1465.4756435259505
+        margin: 4.407013047940268
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: xhigh
+        value: 1515.1904884341689
+        margin: 6.853918941544634
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: xhigh
+        value: 1425.5053732054403
+        margin: 7.805904555117081
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: xhigh
+        value: 1488.704052848074
+        margin: 5.139128915585616
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: xhigh
+        value: 1461.313226636903
+        margin: 6.222562361390146
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-math:
+      - effort: xhigh
+        value: 1478.4890568673927
+        margin: 14.46088942745314
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      swe-bench-pro-v2:
+      - effort: xhigh
+        value: 92.37
+        margin: 1.81
+        date: '2026-10-07'
+        note: scale; reported confidenceInterval_upper
+    context_window: 1050000
+  gpt-6-astra:
     tier: top
     vision: true
     cost:
       input: 10.0
       output: 50.0
-    context_window: 1000000
     scores:
       terminal-bench-4:
-      - effort: null
-        value: 49.495
-        margin: 3.072
-        date: '2026-09-22'
+      - effort: max
+        value: 59.596
+        margin: 4.403
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       terminal-bench-4-security:
-      - effort: null
+      - effort: max
         value: 73.333
-        margin: 6.667
-        date: '2026-09-22'
+        margin: 17.638
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
       terminal-bench-4-software:
-      - effort: null
-        value: 38.889
-        margin: 5.556
-        date: '2026-09-22'
+      - effort: max
+        value: 61.111
+        margin: 3.208
+        date: '2026-09-29'
         note: eee:vals-ai; published standard error
-      gpqa-diamond:
-      - effort: null
-        value: 90.06733333333334
-        margin: 0.7653512933432718
-        date: '2026-09-19'
-        note: openrouter; published standard deviation
+      deepswe:
+      - effort: xhigh
+        value: 74.11504424778761
+        margin: 2.865396174075141
+        date: '2026-09-03'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: high
+        value: 73.23008849557522
+        margin: 3.423496057873005
+        date: '2026-09-03'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: max
+        value: 73.23008849557522
+        margin: 0.8303197562056527
+        date: '2026-09-03'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: medium
+        value: 72.78761061946902
+        margin: 2.5896490818318694
+        date: '2026-09-03'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      - effort: low
+        value: 67.03539823008849
+        margin: 1.3008610516858732
+        date: '2026-09-03'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
       arena-webdev:
       - effort: max
-        value: 1754.6666028244922
-        margin: 10.757466203114063
-        date: '2026-09-24'
+        value: 1787.596294585148
+        margin: 11.071399153797529
+        date: '2026-10-06'
         note: arena:webdev; published rating lower/upper interval
       arena-overall:
       - effort: max
-        value: 1498.4730733605907
-        margin: 8.167254418318635
-        date: '2026-09-13'
+        value: 1477.11090776938
+        margin: 6.861780810538676
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-coding:
       - effort: max
-        value: 1518.8874801450474
-        margin: 17.613403856329796
-        date: '2026-09-13'
+        value: 1543.2046153783062
+        margin: 13.069501111199656
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-creative-writing:
       - effort: max
-        value: 1486.3316206653603
-        margin: 18.042615224143333
-        date: '2026-09-13'
+        value: 1449.0912821587349
+        margin: 14.016014432226143
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-hard-prompts:
       - effort: max
-        value: 1516.6609489759742
-        margin: 10.472835375016643
-        date: '2026-09-13'
+        value: 1501.699378312884
+        margin: 8.34188269128515
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-instruction-following:
       - effort: max
-        value: 1495.8128364737565
-        margin: 14.752411513862626
-        date: '2026-09-13'
+        value: 1473.814420948999
+        margin: 11.151671787932742
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-math:
       - effort: max
-        value: 1522.2830739792416
-        margin: 36.177833892426065
-        date: '2026-09-13'
+        value: 1490.2091202002152
+        margin: 26.85722280038317
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-agent:
       - effort: max
-        value: 134.44326937290768
-        margin: 17.500689606501833
-        date: '2026-09-24'
+        value: 122.71283712595348
+        margin: 22.299801664775494
+        date: '2026-10-02'
         note: arena:agent; published score_ci lower/upper interval; score x1000
       swe-bench-pro-v2:
       - effort: high
-        value: 99.1
-        margin: 0.5
-        date: '2026-09-22'
+        value: 96.9
+        margin: 1.1
+        date: '2026-10-07'
         note: scale; reported confidenceInterval_upper
       swe-atlas-qna:
       - effort: xhigh
-        value: 59.95
-        margin: 4.85
-        date: '2026-03-02'
+        value: 59.14
+        margin: 4.88
+        date: '2026-09-09'
         note: scale; reported confidenceInterval_upper
       swe-atlas-test-writing:
       - effort: xhigh
-        value: 67.04
-        margin: 5.33
-        date: '2026-09-02'
+        value: 50.74
+        margin: 5.91
+        date: '2026-09-09'
         note: scale; reported confidenceInterval_upper
       swe-atlas-refactoring:
       - effort: xhigh
-        value: 56.67
-        margin: 6.52
-        date: '2026-09-02'
+        value: 59.05
+        margin: 6.43
+        date: '2026-09-09'
         note: scale; reported confidenceInterval_upper
+    context_window: 1050000
+  gpt-6-luna:
+    tier: mid
+    vision: true
+    cost:
+      input: 0.1
+      output: 0.5
+    scores:
+      terminal-bench-4:
+      - effort: max
+        value: 13.636
+        margin: 1.515
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: max
+        value: 26.667
+        margin: 6.667
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: max
+        value: 14.815
+        margin: 1.852
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+    context_window: 1050000
   gpt-6-sol:
     tier: top
     vision: true
     cost:
       input: 2.0
       output: 10.0
-    context_window: 1050000
     scores:
+      terminal-bench-4:
+      - effort: max
+        value: 44.444
+        margin: 3.535
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: max
+        value: 60.0
+        margin: 11.547
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: max
+        value: 53.704
+        margin: 1.852
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
       arena-webdev:
       - effort: max
-        value: 1685.8986154645982
-        margin: 16.618097033672598
-        date: '2026-09-24'
-        note: arena:webdev; published rating lower/upper interval
-  deepseek-v4-flash:
-    tier: flash
-    vision: false
-    cost:
-      input: 0.09
-      output: 0.18
-    context_window: 1048576
-    scores:
-      gpqa-diamond:
-      - effort: null
-        value: 85.49781428571428
-        margin: 2.6272769120618134
-        date: '2026-09-19'
-        note: openrouter; published standard deviation
-      arena-webdev:
-      - effort: high
-        value: 1430.7561634525928
-        margin: 7.134141390865011
-        date: '2026-09-24'
+        value: 1687.4891811929338
+        margin: 11.963900789079617
+        date: '2026-10-06'
         note: arena:webdev; published rating lower/upper interval
       arena-overall:
-      - effort: high
-        value: 1437.93628921571
-        margin: 4.206272486674152
-        date: '2026-09-13'
+      - effort: max
+        value: 1457.2134402450206
+        margin: 6.971328707285238
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: max
+        value: 1520.4854949692397
+        margin: 13.364179556359659
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: max
+        value: 1441.5287235288306
+        margin: 14.662850286273738
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: max
+        value: 1484.1384401403207
+        margin: 8.562796508082329
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: max
+        value: 1452.624523776763
+        margin: 11.116795197030228
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-math:
+      - effort: max
+        value: 1451.301696502523
+        margin: 27.02181272060443
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+    context_window: 1050000
+  gpt-6.1-sol:
+    tier: top
+    vision: true
+    cost:
+      input: 2.0
+      output: 10.0
+    scores:
+      terminal-bench-4:
+      - effort: max
+        value: 55.051
+        margin: 1.821
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: max
+        value: 93.333
+        margin: 6.667
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: max
+        value: 57.407
+        margin: 4.9
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      arena-webdev:
+      - effort: max
+        value: 1757.3095509265854
+        margin: 15.44848714911791
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: max
+        value: 1483.2124603186985
+        margin: 10.626170683223904
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: max
+        value: 1542.1777754110892
+        margin: 24.04697134277467
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: max
+        value: 1459.7198658172026
+        margin: 23.525078678968043
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: max
+        value: 1508.5159518990943
+        margin: 13.978290275440486
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: max
+        value: 1490.0907194116016
+        margin: 19.352372436215887
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-agent:
+      - effort: max
+        value: 112.28181892445036
+        margin: 27.637750237077444
+        date: '2026-10-02'
+        note: arena:agent; published score_ci lower/upper interval; score x1000
+      swe-bench-pro-v2:
+      - effort: xhigh
+        value: 96.11
+        margin: 1.24
+        date: '2026-10-07'
+        note: scale; reported confidenceInterval_upper
+    context_window: 1050000
+  kimi-k3:
+    tier: mid
+    vision: true
+    cost:
+      input: 2.85
+      output: 14.25
+    scores:
+      terminal-bench-4:
+      - effort: max
+        value: 19.697
+        margin: 3.499
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: max
+        value: 33.333
+        margin: 6.667
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: max
+        value: 20.37
+        margin: 6.677
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      gpqa-diamond:
       - effort: null
-        value: 1435.5652870419553
-        margin: 4.14272223390185
-        date: '2026-09-13'
+        value: 91.85433141891892
+        margin: 1.1935651348422993
+        date: '2026-10-03'
+        note: openrouter; published standard deviation
+      deepswe:
+      - effort: max
+        value: 68.51441241685144
+        margin: 4.53701407928232
+        date: '2026-07-16'
+        note: epoch:deepswe_external.csv; published 95% CI half-width
+      arena-webdev:
+      - effort: max
+        value: 1655.0156916224996
+        margin: 6.248949487202253
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: max
+        value: 1488.3576986896949
+        margin: 4.771583734278693
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: max
+        value: 1541.1236662993922
+        margin: 7.643031149090575
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: max
+        value: 1460.1752937190033
+        margin: 8.715429447933047
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: max
+        value: 1517.3826293469376
+        margin: 5.5159880469572045
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: max
+        value: 1487.658045626139
+        margin: 6.887833188398304
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-math:
+      - effort: max
+        value: 1500.459010213889
+        margin: 16.969292362203078
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      swe-bench-pro-v2:
+      - effort: max
+        value: 97.7
+        margin: 0.9
+        date: '2026-10-07'
+        note: scale; reported confidenceInterval_upper
+    context_window: 1048576
+  mimo-v2.6-flash:
+    tier: flash
+    vision: true
+    cost:
+      input: 0.14
+      output: 0.28
+    scores:
+      terminal-bench-4:
+      - effort: null
+        value: 24.242
+        margin: 1.515
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: null
+        value: 33.333
+        margin: 6.667
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: null
+        value: 29.63
+        margin: 4.9
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+    context_window: 1048576
+  mimo-v2.6-pro:
+    tier: mid
+    vision: true
+    cost:
+      input: 0.43
+      output: 0.87
+    scores:
+      terminal-bench-4:
+      - effort: null
+        value: 31.313
+        margin: 3.072
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: null
+        value: 26.667
+        margin: 6.667
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: null
+        value: 38.889
+        margin: 3.208
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      gpqa-diamond:
+      - effort: null
+        value: 88.63635000000001
+        margin: 0.4208500000000004
+        date: '2026-10-03'
+        note: openrouter; published standard deviation
+      arena-webdev:
+      - effort: null
+        value: 1629.5131881086577
+        margin: 11.245602023358288
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: null
+        value: 1480.075697959219
+        margin: 9.404493754585815
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-coding:
       - effort: null
-        value: 1483.0660190216695
-        margin: 6.363437197866119
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      - effort: high
-        value: 1479.0610533290348
-        margin: 6.398306954611371
-        date: '2026-09-13'
+        value: 1539.8145472087747
+        margin: 17.743427792418856
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-creative-writing:
-      - effort: high
-        value: 1408.4957131909177
-        margin: 7.773857011208634
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
       - effort: null
-        value: 1407.7905711325704
-        margin: 7.7325214817567485
-        date: '2026-09-13'
+        value: 1446.0788814209818
+        margin: 21.37318200801326
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-hard-prompts:
       - effort: null
-        value: 1459.1827126357828
-        margin: 4.867326476436006
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
-      - effort: high
-        value: 1457.9458469141023
-        margin: 4.926378112887619
-        date: '2026-09-13'
+        value: 1505.4860686727
+        margin: 11.638834932093346
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-instruction-following:
-      - effort: high
-        value: 1433.6968430018678
-        margin: 6.018679603855844
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
       - effort: null
-        value: 1428.0611771528693
-        margin: 5.943062788220232
-        date: '2026-09-13'
+        value: 1474.2333559244998
+        margin: 15.800305224857425
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
       arena-math:
-      - effort: high
-        value: 1440.4578537722462
-        margin: 12.309201570031973
-        date: '2026-09-13'
-        note: arena:text_style_control; published rating lower/upper interval
       - effort: null
-        value: 1425.110332649767
-        margin: 12.196845470498715
-        date: '2026-09-13'
+        value: 1486.622892398655
+        margin: 40.11192138123715
+        date: '2026-10-02'
         note: arena:text_style_control; published rating lower/upper interval
+    context_window: 1048576
+  minimax-m3:
+    tier: mid
+    vision: true
+    cost:
+      input: 0.28
+      output: 1.1
+    scores:
+      terminal-bench-4:
+      - effort: null
+        value: 1.01
+        margin: 1.01
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: null
+        value: 0.0
+        margin: 0.0
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: null
+        value: 1.852
+        margin: 1.852
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      gpqa-diamond:
+      - effort: null
+        value: 90.34975865992416
+        margin: 1.9591261601512255
+        date: '2026-10-03'
+        note: openrouter; published standard deviation
+      arena-webdev:
+      - effort: null
+        value: 1482.0833386758322
+        margin: 5.664783227696262
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: null
+        value: 1440.0554240935571
+        margin: 3.9442811944435334
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: null
+        value: 1494.2772021872966
+        margin: 5.86617129545607
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: null
+        value: 1405.9965525359048
+        margin: 6.879578952824318
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: null
+        value: 1462.5601748544295
+        margin: 4.617128711899227
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: null
+        value: 1434.2381750655693
+        margin: 5.452448430592312
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-math:
+      - effort: null
+        value: 1432.0109792191543
+        margin: 11.42003820930222
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+    context_window: 524288
+  qwen-3.7-flash:
+    tier: flash
+    vision: true
+    cost:
+      input: 0.03
+      output: 0.13
+    scores: {}
+    context_window: 991808
+  qwen-3.8-flash-next:
+    tier: flash
+    vision: true
+    cost:
+      input: 0.1
+      output: 0.2
+    scores:
+      arena-webdev:
+      - effort: null
+        value: 1632.2169752841646
+        margin: 8.564506565055126
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-agent:
+      - effort: null
+        value: -7.264602256568276
+        margin: 6.287398737296948
+        date: '2026-10-02'
+        note: arena:agent; published score_ci lower/upper interval; score x1000
+    context_window: 262144
+  qwen-3.8-max:
+    tier: mid
+    vision: true
+    cost:
+      input: 1.65
+      output: 4.951
+    scores:
+      terminal-bench-4:
+      - effort: max
+        value: 34.343
+        margin: 3.945
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-security:
+      - effort: max
+        value: 40.0
+        margin: 11.547
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      terminal-bench-4-software:
+      - effort: max
+        value: 40.741
+        margin: 6.677
+        date: '2026-09-29'
+        note: eee:vals-ai; published standard error
+      arena-webdev:
+      - effort: null
+        value: 1672.04276413774
+        margin: 7.620229743049322
+        date: '2026-10-06'
+        note: arena:webdev; published rating lower/upper interval
+      arena-overall:
+      - effort: null
+        value: 1481.6170236328671
+        margin: 5.224048412738739
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-coding:
+      - effort: null
+        value: 1523.712865968926
+        margin: 8.053611369101645
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-creative-writing:
+      - effort: null
+        value: 1467.8658881795554
+        margin: 9.719390680946844
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-hard-prompts:
+      - effort: null
+        value: 1503.1551038672706
+        margin: 5.988071225228737
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-instruction-following:
+      - effort: null
+        value: 1473.5413289357957
+        margin: 7.31706348739408
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-math:
+      - effort: null
+        value: 1497.846245179955
+        margin: 17.456151467404652
+        date: '2026-10-02'
+        note: arena:text_style_control; published rating lower/upper interval
+      arena-agent:
+      - effort: null
+        value: 25.115313846606384
+        margin: 6.235797074315623
+        date: '2026-10-02'
+        note: arena:agent; published score_ci lower/upper interval; score x1000
+    context_window: 256000
