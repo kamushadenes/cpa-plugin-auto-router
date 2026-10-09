@@ -73,7 +73,13 @@ def fetch(url: str, key: str | None = None) -> bytes:
                 return response.read()
         except HTTPError as exc:
             last = exc
-            if (exc.code != 429 and not 500 <= exc.code < 600) or attempt == 2:
+            # 404 is treated as transient, not permanent: the fallback leaderboard
+            # pages (tbench.ai, labs.scale.com) have been observed to serve a
+            # momentary 404 on an edge-cache miss for an otherwise-live page
+            # (confirmed unchanged URL and RSC payload shape on retry).
+            if exc.code not in {404, 429} and not 500 <= exc.code < 600:
+                raise
+            if attempt == 2:
                 raise
         except (URLError, OSError) as exc:
             last = exc

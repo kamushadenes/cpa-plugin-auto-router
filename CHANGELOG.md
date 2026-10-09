@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Routed `gpt-6.1-sol` and `claude-sonnet-5-5` at the top tier, `claude-haiku-5-5` and `mimo-v2.6-pro` at mid, and `qwen-3.7-flash` at flash.
+
+### Changed
+- The weekly updater unit now publishes its table to production and hot-reloads it without a restart.
+
+### Fixed
+- Retried a transient 404 from the terminal-bench and Scale leaderboard pages instead of dropping that week's benchmark update.
+
 ## [0.1.7] - 2026-10-01
 
 ### Added

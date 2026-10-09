@@ -40,10 +40,14 @@ ssh root@10.23.23.12 'chown cliproxy:cliproxy /opt/cliproxy/plugins/auto-router/
 ssh root@10.23.23.12 'journalctl -u cliproxyapi -n 40 --no-pager | grep -i "auto-router"'   # expect "plugin loaded"
 # then send one request with model "auto-router" to http://10.23.23.12:8317/v1/chat/completions
 
-# 5. Weekly table updater: it still targets only TEST. To target production, edit
-#    ~/.config/systemd/user/cpa-auto-router-update.service with
-#    --catalog http://10.23.23.12:8317 --catalog-key-file <0600 file with the LXC key>
-#    and copy its --out file to /opt/cliproxy/plugins/auto-router/models.yaml on the LXC; daemon-reload.
+# 5. Weekly table updater: ~/.config/systemd/user/cpa-auto-router-update.service already targets
+#    production. It runs the updater against http://127.0.0.1:8317 (the TCP forwarder to the LXC) and
+#    writes ~/cliproxyapi/plugins/auto-router/models.yaml, then its ExecStartPost scp's that file to
+#    the LXC as .models.yaml.new, installs it as cliproxy:cliproxy 0600, and atomically renames it
+#    into place over the live models.yaml. No restart: the plugin's mtime watcher hot-reloads the new
+#    table and logs "auto-router table reloaded". A model newly visible in the catalog is still
+#    silently dropped (WARN "no tier") until it has an entry in both table/tiers.yaml and
+#    updater/aliases.py; add both before the next scheduled run picks it up.
 
 # Rollback: set plugins.configs.auto-router.enabled: false in /opt/cliproxy/config.yaml on the LXC
 # (hot-reload, no restart).

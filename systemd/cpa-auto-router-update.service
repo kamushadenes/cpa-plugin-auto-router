@@ -4,6 +4,8 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/hermes/orca-workspaces/cpa-plugin-auto-router/auto-router-impl
-EnvironmentFile=/home/hermes/cliproxyapi-test/env
-ExecStart=/home/hermes/.local/bin/uv run --with pyyaml --with pyarrow --python 3.12 python -m updater --catalog http://127.0.0.1:8318 --catalog-key-file /home/hermes/cliproxyapi-test/api-key --tiers table/tiers.yaml --out /home/hermes/cliproxyapi-test/plugins/auto-router/models.yaml --openrouter-key-env OPENROUTER_API_KEY
+WorkingDirectory=/home/hermes/projects/cpa-plugin-auto-router
+EnvironmentFile=/home/hermes/cliproxyapi/plugins/auto-router/env
+ExecStart=/home/hermes/.local/bin/uv run --with pyyaml --with pyarrow --python 3.12 python -m updater --catalog http://127.0.0.1:8317 --catalog-key-file /home/hermes/cliproxyapi/plugins/auto-router/api-key --tiers table/tiers.yaml --out /home/hermes/cliproxyapi/plugins/auto-router/models.yaml --openrouter-key-env OPENROUTER_API_KEY
+# Publish to production (LXC 139); atomic rename so the plugin's mtime watcher reloads it whole.
+ExecStartPost=/bin/sh -c 'D=/opt/cliproxy/plugins/auto-router; scp -q -o BatchMode=yes /home/hermes/cliproxyapi/plugins/auto-router/models.yaml root@10.23.23.12:$$D/.models.yaml.new && ssh -o BatchMode=yes root@10.23.23.12 "install -m 0600 -o cliproxy -g cliproxy $$D/.models.yaml.new $$D/.models.yaml.tmp && rm $$D/.models.yaml.new && mv -f $$D/.models.yaml.tmp $$D/models.yaml"'

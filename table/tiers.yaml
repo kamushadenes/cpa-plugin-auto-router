@@ -1,7 +1,16 @@
 # Tier per catalog model id (exact id from GET /v1/models). Models in the
 # proxy but absent here are WARNed by the updater and never routed.
-flash: [glm-5.3-flash, deepseek-v4-flash, qwen-3.8-flash-next, mimo-v2.6-flash]
+#
+# Deliberately excluded (expected WARN catalog model <id> has no tier):
+#   glm-5.2                       - HTTP 400 "none reasoning effort is not supported" on the proxy (2026-10-08 smoke).
+#   mimo-v2.6-pro-ultraspeed       - upstream "Model is unavailable" on the proxy (2026-10-08 smoke).
+#   gpt-5.5                       - superseded by gpt-6.1-sol, already tiered below.
+#   mimo-v2.5-pro                 - superseded by mimo-v2.6-pro, already tiered below.
+#   deepseek-v4-flash-vision-exp  - experimental.
+#   kimi-k2.7-code                - weak Artificial Analysis score (26 vs tiered peers); 128-256k context.
+#   qwen-3.8-27b                  - weak Artificial Analysis score (34 xhigh vs tiered peers); 128-256k context.
+flash: [glm-5.3-flash, deepseek-v4-flash, qwen-3.8-flash-next, mimo-v2.6-flash, qwen-3.7-flash]
 mid:   [gpt-5.6-luna, gpt-6-luna, gpt-5.6-terra, glm-5.3, kimi-k3, claude-sonnet-5,
-        deepseek-v4-pro, qwen-3.8-max, minimax-m3]
+        deepseek-v4-pro, qwen-3.8-max, minimax-m3, claude-haiku-5-5, mimo-v2.6-pro]
 top:   [gpt-6-astra, gpt-6-sol, gpt-5.6-sol, claude-opus-5, claude-opus-5-5,
-        claude-fable-5, claude-fable-5-1]
+        claude-fable-5, claude-fable-5-1, gpt-6.1-sol, claude-sonnet-5-5]

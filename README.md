@@ -100,7 +100,7 @@ CLIPROXY_API_KEY_FILE=/home/hermes/cliproxyapi-test/api-key
   --openrouter-key-env OPENROUTER_API_KEY
 ```
 
-Install the TEST-only user units and enable the weekly timer:
+Install the user units and enable the weekly timer:
 
 ```bash
 install -m 0644 systemd/cpa-auto-router-update.service systemd/cpa-auto-router-update.timer ~/.config/systemd/user/
@@ -108,7 +108,12 @@ XDG_RUNTIME_DIR=/run/user/1000 systemctl --user daemon-reload
 XDG_RUNTIME_DIR=/run/user/1000 systemctl --user enable --now cpa-auto-router-update.timer
 ```
 
-The service uses this checkout as `WorkingDirectory`, reads the TEST proxy key from `/home/hermes/cliproxyapi-test/api-key`, and writes only the TEST plugin table. Production is deliberately not a service target.
+`systemd/cpa-auto-router-update.service` is the production unit: it runs the updater against the
+production catalog (`http://127.0.0.1:8317`, the TCP forwarder to the LXC), writes
+`~/cliproxyapi/plugins/auto-router/models.yaml`, then its `ExecStartPost` publishes that file to the
+LXC and the plugin's mtime watcher hot-reloads it with no restart (see
+[`docs/runbook-production.md`](docs/runbook-production.md)). A model newly visible in the catalog is
+still routed only once it has an entry in both `table/tiers.yaml` and `updater/aliases.py`.
 
 ## Historical verification
 

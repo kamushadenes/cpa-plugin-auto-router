@@ -25,6 +25,11 @@ CATALOG_IDS: Final[tuple[str, ...]] = (
     "claude-opus-5-5",
     "claude-fable-5",
     "claude-fable-5-1",
+    "gpt-6.1-sol",
+    "claude-sonnet-5-5",
+    "claude-haiku-5-5",
+    "mimo-v2.6-pro",
+    "qwen-3.7-flash",
 )
 
 BENCHMARKS: Final[dict[str, dict[str, str]]] = {
@@ -196,6 +201,26 @@ EEE_MODELS: Final[dict[str, tuple[tuple[str, str, str], ...] | None]] = {
         ("llm-stats", "anthropic", "claude-fable-5-1"),
         ("artificial-analysis-llms", "anthropic", "claude-fable-5-1"),
     ),
+    "gpt-6.1-sol": (
+        ("vals-ai", "openai", "gpt-6.1-sol"),
+        ("llm-stats", "openai", "gpt-6.1-sol"),
+        ("artificial-analysis-llms", "openai", "gpt-6-1-sol"),
+    ),
+    "claude-sonnet-5-5": (
+        ("vals-ai", "anthropic", "claude-sonnet-5-5"),
+        ("llm-stats", "anthropic", "claude-sonnet-5-5"),
+        ("artificial-analysis-llms", "anthropic", "claude-sonnet-5-5"),
+    ),
+    "claude-haiku-5-5": (
+        ("llm-stats", "anthropic", "claude-haiku-5-5"),
+        ("artificial-analysis-llms", "anthropic", "claude-haiku-5-5"),
+    ),
+    "mimo-v2.6-pro": (
+        ("vals-ai", "xiaomi", "mimo-v2.6-pro"),
+        ("llm-stats", "xiaomi", "mimo-v2.6-pro"),
+        ("artificial-analysis-llms", "xiaomi", "mimo-v2-6-pro"),
+    ),
+    "qwen-3.7-flash": None,
 }
 
 OPENROUTER_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
@@ -228,6 +253,11 @@ OPENROUTER_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
     "claude-opus-5-5": ("anthropic/claude-opus-5.5-20260921",),
     "claude-fable-5": ("anthropic/claude-5-fable-20260609",),
     "claude-fable-5-1": ("anthropic/claude-fable-5.1-20260831",),
+    "gpt-6.1-sol": ("openai/gpt-6.1-sol-20260929",),
+    "claude-sonnet-5-5": ("anthropic/claude-sonnet-5.5-20260928",),
+    "claude-haiku-5-5": ("anthropic/claude-haiku-5.5-20261007",),
+    "mimo-v2.6-pro": ("xiaomi/mimo-v2.6-pro-20260921",),
+    "qwen-3.7-flash": None,
 }
 
 EPOCH_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
@@ -251,6 +281,11 @@ EPOCH_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
     "claude-opus-5-5": None,
     "claude-fable-5": ("claude-fable-5",),
     "claude-fable-5-1": ("claude-fable-5-1",),
+    "gpt-6.1-sol": ("gpt-6.1-sol",),
+    "claude-sonnet-5-5": ("claude-sonnet-5-5",),
+    "claude-haiku-5-5": None,
+    "mimo-v2.6-pro": ("mimo-v2.6-pro",),
+    "qwen-3.7-flash": None,
 }
 
 ARENA_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
@@ -286,6 +321,11 @@ ARENA_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
     "claude-opus-5-5": ("claude-opus-5.5-max",),
     "claude-fable-5": ("claude-fable-5", "claude-fable-5-high", "Claude Fable 5 (High)"),
     "claude-fable-5-1": ("claude-fable-5.1-max", "Claude Fable 5.1 (Max)"),
+    "gpt-6.1-sol": ("gpt-6.1-sol-max", "GPT 6.1 Sol (Max)"),
+    "claude-sonnet-5-5": ("claude-sonnet-5.5-xhigh", "claude-sonnet-5.5-high", "Claude Sonnet 5.5 (Max)"),
+    "claude-haiku-5-5": None,
+    "mimo-v2.6-pro": ("mimo-v2.6-pro",),
+    "qwen-3.7-flash": None,
 }
 
 MODELSDEV_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
@@ -313,6 +353,15 @@ MODELSDEV_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
     "claude-opus-5-5": ("claude-opus-5-5", "anthropic/claude-opus-5.5"),
     "claude-fable-5": ("claude-fable-5", "anthropic/claude-fable-5"),
     "claude-fable-5-1": ("claude-fable-5-1", "anthropic/claude-fable-5.1"),
+    "gpt-6.1-sol": ("gpt-6.1-sol", "openai/gpt-6.1-sol"),
+    "claude-sonnet-5-5": ("claude-sonnet-5-5", "anthropic/claude-sonnet-5.5"),
+    "claude-haiku-5-5": ("claude-haiku-5-5", "anthropic/claude-haiku-5.5"),
+    "mimo-v2.6-pro": (
+        "XiaomiMiMo/MiMo-V2.6-Pro",
+        "xiaomi/mimo-v2.6-pro",
+        "mimo-v2.6-pro",
+    ),
+    "qwen-3.7-flash": ("qwen/qwen3.7-flash", "qwen3.7-flash"),
 }
 
 SCALE_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
@@ -346,6 +395,11 @@ SCALE_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
     "claude-opus-5-5": None,
     "claude-fable-5": ("Fable-5 (Claude Code) xHigh", "Fable-5 (Claude Code) xHigh*"),
     "claude-fable-5-1": ("Fable-5.1 (Claude Code) xHigh*", "Fable-5.1 (Claude Code) xHigh", "Fable 5.1 (Claude Code) high"),
+    "gpt-6.1-sol": ("GPT-6.1-Sol (mini-swe-agent) xhigh",),
+    "claude-sonnet-5-5": None,
+    "claude-haiku-5-5": ("Haiku 5.5 (mini-swe-agent) high",),
+    "mimo-v2.6-pro": None,
+    "qwen-3.7-flash": None,
 }
 
 TBENCH_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
@@ -369,6 +423,11 @@ TBENCH_MODELS: Final[dict[str, tuple[str, ...] | None]] = {
     "claude-opus-5-5": None,
     "claude-fable-5": ("Fable 5",),
     "claude-fable-5-1": ("Fable 5.1",),
+    "gpt-6.1-sol": ("GPT-6.1 Sol",),
+    "claude-sonnet-5-5": ("Sonnet 5.5",),
+    "claude-haiku-5-5": None,
+    "mimo-v2.6-pro": None,
+    "qwen-3.7-flash": None,
 }
 
 SOURCE_MODELS: Final[dict[str, dict[str, object]]] = {
