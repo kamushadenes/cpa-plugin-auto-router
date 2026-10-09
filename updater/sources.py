@@ -609,14 +609,11 @@ def _tbench_rows(fetch: Fetch) -> list[Row]:
 def fallback(fetch: Fetch, present_benchmarks: set[str]) -> list[Row]:
     missing = REQUIRED_FALLBACKS - present_benchmarks
     rows: list[Row] = []
-    if "terminal-bench-4" in missing:
-        rows.extend(_tbench_rows(fetch))
-    for bench in (
-        "swe-bench-pro-v2",
-        "swe-atlas-qna",
-        "swe-atlas-test-writing",
-        "swe-atlas-refactoring",
-    ):
-        if bench in missing:
-            rows.extend(_scale_rows(fetch, bench))
+    for bench, url in (("terminal-bench-4", TBENCH_URL), *SCALE_URLS.items()):
+        if bench not in missing:
+            continue
+        try:
+            rows.extend(_tbench_rows(fetch) if bench == "terminal-bench-4" else _scale_rows(fetch, bench))
+        except Exception as exc:  # one page outage must not drop the other pages
+            log.warning("source failed: fallback %s: %s: %s", bench, url, exc)
     return rows
