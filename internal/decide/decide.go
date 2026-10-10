@@ -122,21 +122,32 @@ type Choice struct {
 }
 
 // scoreAt returns the score usable at effort: exact or closest below; an empty
-// effort matches every requested effort but is less specific than a declared effort.
+// effort matches every requested effort but is less specific than a declared
+// effort. Only when a model has no row at or below effort and no untagged row,
+// the closest row above effort is returned: a model must not vanish from a
+// benchmark just because it was only measured at a higher effort.
 func scoreAt(scores []table.Score, effort string) (table.Score, bool) {
 	want, ok := effortRank[effort]
 	if !ok {
 		return table.Score{}, false
 	}
-	var best table.Score
-	bestRank := -2
-	found := false
+	var best, above table.Score
+	bestRank, aboveRank := -2, -2
+	found, foundAbove := false, false
 	for _, score := range scores {
 		rank := -1
 		if score.Effort != "" {
 			var known bool
 			rank, known = effortRank[score.Effort]
-			if !known || rank > want {
+			if !known {
+				continue
+			}
+			if rank > want {
+				if !foundAbove || rank < aboveRank || (rank == aboveRank && score.Value > above.Value) {
+					above = score
+					aboveRank = rank
+					foundAbove = true
+				}
 				continue
 			}
 		}
@@ -145,6 +156,11 @@ func scoreAt(scores []table.Score, effort string) (table.Score, bool) {
 			bestRank = rank
 			found = true
 		}
+	}
+	if !found && foundAbove {
+		// ponytail: a higher-effort score overstates what the model does at the
+		// requested thinking level; upgrade path is per-effort discount if it matters.
+		return above, true
 	}
 	return best, found
 }
