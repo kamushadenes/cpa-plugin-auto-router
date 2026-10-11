@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-10-10
+
 ### Added
 - Routed `gpt-6.1-sol` and `claude-sonnet-5-5` at the top tier, `claude-haiku-5-5` and `mimo-v2.6-pro` at mid, and `qwen-3.7-flash` at flash.
 
