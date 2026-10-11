@@ -109,6 +109,29 @@ func TestEffortPicksClosestBelowNeverAbove(t *testing.T) {
 	}
 }
 
+func TestEffortFallsBackToClosestAboveOnlyWithoutUntagged(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"a": mk("mid", 60, s("terminal-bench-4-security", "max", 60, 1)),
+		"b": mk("mid", 60, s("terminal-bench-4-security", "max", 30, 1)),
+	})
+	c, _ := Choose(Input{Table: tb, Category: "review", Difficulty: Routine})
+	if c.Model != "a" || c.Benchmark != "terminal-bench-4-security" {
+		t.Fatalf("higher-effort rows must keep models visible at lower thinking: %+v", c)
+	}
+	tb2 := tbl(map[string]table.Model{
+		"both": mk("mid", 60, map[string][]table.Score{
+			"terminal-bench-4-security": {
+				{Effort: "max", Value: 99, Margin: 1, Date: "2026-09-24"},
+				{Effort: "", Value: 10, Margin: 1, Date: "2026-09-24"},
+			},
+		}),
+	})
+	c, _ = Choose(Input{Table: tb2, Category: "review", Difficulty: Routine})
+	if c.Model != "both" || c.Score != 10 {
+		t.Fatalf("untagged row must be preferred over higher-effort row: %+v", c)
+	}
+}
+
 func TestUnscoredIsFallbackOnly(t *testing.T) {
 	tb := tbl(map[string]table.Model{
 		"scored":   mk("mid", 60, s("arena-coding", "", 1500, 5)),
