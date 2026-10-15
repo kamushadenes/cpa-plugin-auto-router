@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- `make install` now ships a version-named plugin file that the running proxy picks up without a restart.
+
+### Fixed
+- The production runbook no longer claims that overwriting the plugin file reloads it.
+
 ## [0.1.9] - 2026-10-15
 
 ### Added
