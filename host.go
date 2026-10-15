@@ -145,6 +145,9 @@ func execute(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
+	if alias, ok := refusalAlias(loadedConfig(), stripThinkingSuffix(req.Model)); ok {
+		return executeRefusal(req, alias)
+	}
 	decision, routeCtx, generation, err := decisionForExecutorWithContext(req)
 	if err != nil {
 		return errorEnvelope("executor_error", err.Error()), nil
@@ -219,6 +222,9 @@ func executeStream(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
+	if alias, ok := refusalAlias(loadedConfig(), stripThinkingSuffix(req.Model)); ok {
+		return executeRefusalStream(req, alias)
+	}
 	pluginStreamID := strings.TrimSpace(req.StreamID)
 	if pluginStreamID == "" {
 		return errorEnvelope("executor_error", "stream_id is required for executor.execute_stream"), nil
@@ -267,7 +273,7 @@ func executeStream(raw []byte) ([]byte, error) {
 	}
 	go func(ready hostStreamReady) {
 		defer endPluginStream()
-		if err := continueHostStream(context.Background(), ready, pluginStreamID); err != nil {
+		if err := continueHostStream(context.Background(), ready, pluginStreamID, nil); err != nil {
 			closePluginStream(pluginStreamID, err.Error())
 			return
 		}
@@ -418,57 +424,65 @@ func openHostStream(ctx context.Context, req rpcExecutorRequest, model string, b
 		return hostStreamReady{}, errors.New("plugin is shutting down")
 	}
 	for {
-		chunkRaw, err := hostCall(pluginabi.MethodHostModelStreamRead, pluginapi.HostModelStreamReadRequest{StreamID: response.StreamID})
+		payload, done, err := readHostStreamChunk(response.StreamID)
 		if err != nil {
 			closeRegisteredPluginHostStream(response.StreamID)
 			return hostStreamReady{}, err
 		}
-		var chunk pluginapi.HostModelStreamReadResponse
-		if err := json.Unmarshal(chunkRaw, &chunk); err != nil {
-			closeRegisteredPluginHostStream(response.StreamID)
-			return hostStreamReady{}, err
+		if len(payload) > 0 {
+			return hostStreamReady{streamID: response.StreamID, firstPayload: payload, done: done}, nil
 		}
-		if chunk.Error != "" {
-			closeRegisteredPluginHostStream(response.StreamID)
-			return hostStreamReady{}, errors.New(chunk.Error)
-		}
-		if len(chunk.Payload) > 0 {
-			return hostStreamReady{streamID: response.StreamID, firstPayload: append([]byte(nil), chunk.Payload...), done: chunk.Done}, nil
-		}
-		if chunk.Done {
+		if done {
 			return hostStreamReady{streamID: response.StreamID, done: true}, nil
 		}
 	}
 }
 
-func continueHostStream(ctx context.Context, ready hostStreamReady, pluginStreamID string) error {
+// readHostStreamChunk reads one chunk from a host model stream.
+func readHostStreamChunk(streamID string) ([]byte, bool, error) {
+	chunkRaw, err := hostCall(pluginabi.MethodHostModelStreamRead, pluginapi.HostModelStreamReadRequest{StreamID: streamID})
+	if err != nil {
+		return nil, false, err
+	}
+	var chunk pluginapi.HostModelStreamReadResponse
+	if err := json.Unmarshal(chunkRaw, &chunk); err != nil {
+		return nil, false, err
+	}
+	if chunk.Error != "" {
+		return nil, false, errors.New(chunk.Error)
+	}
+	return append([]byte(nil), chunk.Payload...), chunk.Done, nil
+}
+
+// continueHostStream forwards the rest of a host stream to the client. observe,
+// when set, sees every forwarded chunk.
+func continueHostStream(ctx context.Context, ready hostStreamReady, pluginStreamID string, observe func([]byte)) error {
 	defer closeRegisteredPluginHostStream(ready.streamID)
 	if len(ready.firstPayload) > 0 {
 		if err := emitPluginStreamChunk(pluginStreamID, ready.firstPayload); err != nil {
 			return err
+		}
+		if observe != nil {
+			observe(ready.firstPayload)
 		}
 	}
 	if ready.done {
 		return nil
 	}
 	for {
-		chunkRaw, err := hostCall(pluginabi.MethodHostModelStreamRead, pluginapi.HostModelStreamReadRequest{StreamID: ready.streamID})
+		payload, done, err := readHostStreamChunk(ready.streamID)
 		if err != nil {
 			return err
 		}
-		var chunk pluginapi.HostModelStreamReadResponse
-		if err := json.Unmarshal(chunkRaw, &chunk); err != nil {
-			return err
-		}
-		if chunk.Error != "" {
-			return errors.New(chunk.Error)
-		}
-		if len(chunk.Payload) > 0 {
-			if err := emitPluginStreamChunk(pluginStreamID, chunk.Payload); err != nil {
+		if len(payload) > 0 {
+			if err := emitPluginStreamChunk(pluginStreamID, payload); err != nil {
 				return err
 			}
+			if observe != nil {
+				observe(payload)
+			}
 		}
-		if chunk.Done {
+		if done {
 			return nil
 		}
 	}
