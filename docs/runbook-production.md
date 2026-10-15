@@ -11,7 +11,7 @@ Since 2026-09-29 the production proxy runs in **LXC 139 `cliproxy`** (Proxmox no
 | Host | `root@10.23.23.12` (SSH key of hermes-chloe) |
 | Service | system unit `cliproxyapi.service`, runs as user `cliproxy` |
 | Proxy root | `/opt/cliproxy` (`config.yaml`, `auth/`, `plugins/`) |
-| Plugin binary | `/opt/cliproxy/plugins/auto-router*.so` (exactly one file) |
+| Plugin binary | `/opt/cliproxy/plugins/auto-router-v<version>.so` (exactly one file) |
 | Plugin table and secrets | `/opt/cliproxy/plugins/auto-router/` (`models.yaml`, `env`, `api-key`) |
 | Endpoint | `http://10.23.23.12:8317/v1` |
 
@@ -24,8 +24,14 @@ The TEST instance (`cliproxyapi-test.service`, port 8318, `~/cliproxyapi-test/`)
 Approved-checkout note: this block assumes the approved artifact checkout at `~/projects/cpa-plugin-auto-router`; the current worktree may differ.
 
 ```bash
-# 1. Binary: build, then replace the single plugin file on the LXC. `make install` removes any older
-#    auto-router*.so first, so the host never loads two copies. No restart: the host reloads it.
+# 1. Binary: build, then install the versioned plugin file on the LXC. `make install` reads the
+#    version from plugin.go, removes every other auto-router*.so, installs
+#    plugins/auto-router-v<version>.so, and appends a `# auto-router deploy <sha> v<version>` comment
+#    to /opt/cliproxy/config.yaml. The host only swaps a loaded plugin when the selected file path
+#    differs, and it only re-reads the plugin set on a config reload, which the watcher triggers on a
+#    config.yaml content change; the new file name plus the appended comment supply both. No restart.
+#    Pitfall: overwriting the .so in place under the same name, or `touch`ing config.yaml, reloads
+#    nothing and leaves the old code running until `systemctl restart cliproxyapi`.
 make install
 
 # 2. Table (only when it changed)
@@ -37,7 +43,10 @@ ssh root@10.23.23.12 'chown cliproxy:cliproxy /opt/cliproxy/plugins/auto-router/
 #    `ssh root@10.23.23.12 systemctl restart cliproxyapi`.
 
 # 4. Verify
-ssh root@10.23.23.12 'journalctl -u cliproxyapi -n 40 --no-pager | grep -i "auto-router"'   # expect "plugin loaded"
+ssh root@10.23.23.12 'journalctl -u cliproxyapi -n 40 --no-pager | grep -i "auto-router"'
+#    expect: pluginhost: plugin hot reloaded plugin_id=auto-router active_version=<new> retired_version=<old>
+#    (after a restart instead: pluginhost: plugin registered plugin_id=auto-router version=<new>)
+curl -fsS http://10.23.23.12:8317/v1/models | grep -o 'auto-router'   # expect the model to be listed
 # then send one request with model "auto-router" to http://10.23.23.12:8317/v1/chat/completions
 
 # 5. Weekly table updater: ~/.config/systemd/user/cpa-auto-router-update.service already targets
@@ -50,5 +59,7 @@ ssh root@10.23.23.12 'journalctl -u cliproxyapi -n 40 --no-pager | grep -i "auto
 #    updater/aliases.py; add both before the next scheduled run picks it up.
 
 # Rollback: set plugins.configs.auto-router.enabled: false in /opt/cliproxy/config.yaml on the LXC
-# (hot-reload, no restart).
+# (hot-reload, no restart). To go back to the previous build, install the previous
+# plugins/auto-router-v<old>.so (removing the new one) and append another deploy comment line to
+# config.yaml so the host re-evaluates the plugin set.
 ```
