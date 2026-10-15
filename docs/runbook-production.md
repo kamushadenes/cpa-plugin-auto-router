@@ -31,7 +31,9 @@ Approved-checkout note: this block assumes the approved artifact checkout at `~/
 #    differs, and it only re-reads the plugin set on a config reload, which the watcher triggers on a
 #    config.yaml content change; the new file name plus the appended comment supply both. No restart.
 #    Pitfall: overwriting the .so in place under the same name, or `touch`ing config.yaml, reloads
-#    nothing and leaves the old code running until `systemctl restart cliproxyapi`.
+#    nothing and leaves the old code running until `systemctl restart cliproxyapi`. The file name
+#    carries only the version, so rebuilding the same version reinstalls the same path and keeps the
+#    old code loaded: bump the version in plugin.go or run `systemctl restart cliproxyapi`.
 make install
 
 # 2. Table (only when it changed)
@@ -46,7 +48,9 @@ ssh root@10.23.23.12 'chown cliproxy:cliproxy /opt/cliproxy/plugins/auto-router/
 ssh root@10.23.23.12 'journalctl -u cliproxyapi -n 40 --no-pager | grep -i "auto-router"'
 #    expect: pluginhost: plugin hot reloaded plugin_id=auto-router active_version=<new> retired_version=<old>
 #    (after a restart instead: pluginhost: plugin registered plugin_id=auto-router version=<new>)
-curl -fsS http://10.23.23.12:8317/v1/models | grep -o 'auto-router'   # expect the model to be listed
+#    KEY is a client API key from /opt/cliproxy/config.yaml; the endpoint rejects an unauthenticated
+#    request with 401. Read it into the shell by hand; never print it, log it, or commit it.
+curl -fsS -H "Authorization: Bearer $KEY" http://10.23.23.12:8317/v1/models | grep -o 'auto-router'
 # then send one request with model "auto-router" to http://10.23.23.12:8317/v1/chat/completions
 
 # 5. Weekly table updater: ~/.config/systemd/user/cpa-auto-router-update.service already targets
