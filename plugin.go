@@ -41,6 +41,9 @@ type pluginConfig struct {
 	TablePath           string  `yaml:"table_path"`
 	SnippetChars        int     `yaml:"snippet_chars"`
 	JevTimeoutMS        int     `yaml:"jev_timeout_ms"`
+	// RefusalFallback is opt-in: each entry registers an alias model that runs
+	// on a primary model and falls back only on a safety refusal.
+	RefusalFallback []refusalFallbackAlias `yaml:"refusal_fallback"`
 }
 
 type registration struct {
@@ -185,6 +188,7 @@ func configure(raw []byte) error {
 	if cfg.JevTimeoutMS == 0 {
 		cfg.JevTimeoutMS = 2000
 	}
+	cfg.RefusalFallback = normalizeRefusalFallback(cfg.RefusalFallback)
 	watch, err := table.Watch(cfg.TablePath)
 	state.mu.Lock()
 	state.cfg = cfg
@@ -220,7 +224,7 @@ func pluginRegistration() registration {
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata: pluginapi.Metadata{
 			Name:             "auto-router",
-			Version:          "0.1.8",
+			Version:          "0.1.9",
 			Author:           "kamushadenes",
 			GitHubRepository: "https://github.com/kamushadenes/cpa-plugin-auto-router",
 			ConfigFields: []pluginapi.ConfigField{
@@ -233,6 +237,7 @@ func pluginRegistration() registration {
 				{Name: "table_path", Type: pluginapi.ConfigFieldTypeString, Description: "Path to the local benchmark table."},
 				{Name: "snippet_chars", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum user snippet size."},
 				{Name: "jev_timeout_ms", Type: pluginapi.ConfigFieldTypeInteger, Description: "Jev request timeout in milliseconds."},
+				{Name: "refusal_fallback", Type: pluginapi.ConfigFieldTypeString, Description: "Aliases that retry a safety refusal on a fallback model."},
 			},
 		},
 		Capabilities: registrationCapability{
@@ -247,18 +252,29 @@ func pluginRegistration() registration {
 }
 
 func modelRegistration() pluginapi.ModelRegistrationResponse {
-	return pluginapi.ModelRegistrationResponse{
-		Provider: pluginIdentifier,
-		Models: []pluginapi.ModelInfo{{
-			ID:                         pluginIdentifier,
+	cfg := loadedConfig()
+	models := make([]pluginapi.ModelInfo, 0, 1+len(cfg.RefusalFallback))
+	models = append(models, pluginapi.ModelInfo{
+		ID:                         pluginIdentifier,
+		Object:                     "model",
+		OwnedBy:                    pluginIdentifier,
+		DisplayName:                "Auto Router (Jev)",
+		SupportedGenerationMethods: []string{"chat"},
+		ContextLength:              1000000,
+		UserDefined:                true,
+	})
+	for _, alias := range cfg.RefusalFallback {
+		models = append(models, pluginapi.ModelInfo{
+			ID:                         alias.Alias,
 			Object:                     "model",
 			OwnedBy:                    pluginIdentifier,
-			DisplayName:                "Auto Router (Jev)",
+			DisplayName:                alias.Primary + " (refusal fallback: " + alias.Fallback + ")",
 			SupportedGenerationMethods: []string{"chat"},
 			ContextLength:              1000000,
 			UserDefined:                true,
-		}},
+		})
 	}
+	return pluginapi.ModelRegistrationResponse{Provider: pluginIdentifier, Models: models}
 }
 
 type routeMeta struct {
@@ -303,11 +319,17 @@ func routeModel(raw []byte) ([]byte, error) {
 	if err := json.Unmarshal(raw, &req); err != nil {
 		return nil, err
 	}
-	if stripThinkingSuffix(req.RequestedModel) != pluginIdentifier {
-		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
-	}
 	cfg := loadedConfig()
 	if !cfg.Enabled {
+		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
+	}
+	requested := stripThinkingSuffix(req.RequestedModel)
+	// A refusal-fallback alias is served by this plugin without Jev: no
+	// classification, no session state, no pending route.
+	if _, ok := refusalAlias(cfg, requested); ok {
+		return okEnvelope(pluginapi.ModelRouteResponse{Handled: true, TargetKind: pluginapi.ModelRouteTargetSelf, Reason: refusalGuardReason})
+	}
+	if requested != pluginIdentifier {
 		return okEnvelope(pluginapi.ModelRouteResponse{Handled: false})
 	}
 	sid := session.ID(req.Headers, req.Body)

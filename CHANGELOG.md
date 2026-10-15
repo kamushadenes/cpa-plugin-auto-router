@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-10-15
+
+### Added
+- Opt-in `refusal_fallback` aliases re-run a safety-filtered answer on a configured fallback model.
+- Streaming aliases hold back thinking until the first visible answer, so a refusal after thinking still switches.
+
 ## [0.1.8] - 2026-10-10
 
 ### Added

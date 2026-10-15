@@ -47,6 +47,7 @@ The plugin accepts these fields under `plugins.configs.auto-router`:
 - `table_path`: benchmark YAML path. The default points at the production plugin directory; set it explicitly for TEST.
 - `snippet_chars`: maximum characters of the latest human message sent to Jev. Default and cap: `4000`.
 - `jev_timeout_ms`: Jev request timeout. Default: `2000`.
+- `refusal_fallback`: optional list of refusal-guarded aliases. Absent or empty means the feature is off. Each entry needs `alias`, `primary` and `fallback`; an entry missing any of the three is ignored.
 
 ## Model failover
 
@@ -57,6 +58,30 @@ A successful retry stores the effective session model. The decision log and `X-A
 Every retry after a transport failure carries a notice appended to the request body as a trailing user turn, in the request's own format: a `user` message for `chat-completions`, an `input_text` message item for `responses`. It names the model that did not complete, the model now running, and `failover`. A first attempt carries a notice only when the router moved the session to a different model, and that wording says the session moved rather than claiming the previous model failed. Existing turns, tool-call pairs, unknown fields, and numeric precision are preserved; the original body is never mutated, so the routing and Jev paths never see a notice.
 
 `X-Auto-Router-Tier` accompanies `X-Auto-Router` on both the buffered and streaming paths and names the tier the router selected.
+
+## Refusal fallback aliases
+
+`refusal_fallback` registers extra models that are not routed by Jev. A request for the alias runs on `primary`; only a safety refusal moves it to `fallback`:
+
+```yaml
+plugins:
+  configs:
+    auto-router:
+      refusal_fallback:
+        - alias: claude-opus-5-5-guarded
+          primary: claude-opus-5-5
+          fallback: abliterated-model-large-v2
+```
+
+The alias is listed in `/v1/models`, and `RouteModel` claims it without calling Jev, so there is no classification and no session state. `primary` and `fallback` reach the host verbatim, so a thinking suffix such as `claude-opus-5-5(high)` belongs in the configured value.
+
+A refusal is `finish_reason: content_filter` for `chat-completions` (what the Anthropic `stop_reason: refusal` becomes in translation) and `status: incomplete` with `incomplete_details.reason: content_filter` for `responses`. Nothing else switches models: 429, 5xx, authentication errors and timeouts are returned as they arrive, and the alias path does not retry.
+
+On the non-streaming path the plugin calls `primary`, and on a refusal calls `fallback` once with the identical body. On the streaming path it buffers primary chunks until either the first visible answer output (answer text or a tool call, after which it flushes and streams through) or a terminal refusal with nothing emitted yet (it then closes the primary stream and streams `fallback` instead). Role-only deltas, empty deltas and reasoning deltas do not count as visible output, so a model that thinks at length before refusing still switches; the buffered reasoning is dropped and the client hears only the fallback answer. The buffer holds at most 1 MiB; past that the stream is flushed and runs unguarded. A refusal that arrives after visible output has been flushed cannot be un-sent, so it passes through and is logged as `refusal_after_output`.
+
+`X-Auto-Router` is `claude-opus-5-5;refusal-guard` while the primary answers, and `abliterated-model-large-v2;refusal-fallback;failed_from=["claude-opus-5-5"]` after a switch. Each switch logs one JSON line with `alias`, `primary`, `fallback`, `reason` and `stream`; request and response bodies are never logged.
+
+Data egress caveat: the fallback provider in the example above is external (`api.abliteration.ai`). On a refusal the full request body, system prompt and conversation history are sent to that provider. Do not configure an external fallback for an alias that carries data which may not leave your own providers.
 
 ## Difficulty raise from repeated tool failures
 
