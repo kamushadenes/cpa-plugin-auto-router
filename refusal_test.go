@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
@@ -85,33 +86,36 @@ func TestRefusedResponseMatchesTranslatorShapes(t *testing.T) {
 	}
 }
 
-func TestStreamChunkDetectorsSeparateOutputFromRefusal(t *testing.T) {
+func TestStreamChunkDetectorsSeparateVisibleOutputFromReasoningAndRefusal(t *testing.T) {
 	tests := []struct {
 		name        string
 		format      string
 		chunk       string
-		wantOutput  bool
+		wantVisible bool
 		wantRefusal bool
 	}{
 		{"chat role only", formatChatCompletions, "data: {\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\n", false, false},
 		{"chat text delta", formatChatCompletions, "data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n", true, false},
-		{"chat reasoning delta", formatChatCompletions, "data: {\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"thinking\"},\"finish_reason\":null}]}\n\n", true, false},
+		{"chat reasoning delta is not visible output", formatChatCompletions, "data: {\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"thinking\"},\"finish_reason\":null}]}\n\n", false, false},
+		{"chat reasoning field is not visible output", formatChatCompletions, "data: {\"choices\":[{\"index\":0,\"delta\":{\"reasoning\":\"thinking\"},\"finish_reason\":null}]}\n\n", false, false},
 		{"chat tool call delta", formatChatCompletions, "data: {\"choices\":[{\"index\":0,\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\"}]},\"finish_reason\":null}]}\n\n", true, false},
 		{"chat refusal terminal", formatChatCompletions, "data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"content_filter\"}]}\n\n", false, true},
 		{"chat done sentinel", formatChatCompletions, "data: [DONE]\n\n", false, false},
 		{"chat double framed text delta", formatChatCompletions, "data: data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null}]}\n\n", true, false},
 		{"chat double framed refusal", formatChatCompletions, "data: data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"content_filter\"}]}\n\n", false, true},
 		{"responses text delta", formatResponses, "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"Hello\"}\n\n", true, false},
+		{"responses function call arguments delta", formatResponses, "event: response.function_call_arguments.delta\ndata: {\"type\":\"response.function_call_arguments.delta\",\"delta\":\"{\\\"path\\\"\"}\n\n", true, false},
 		{"responses empty delta", formatResponses, "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"\"}\n\n", false, false},
-		{"responses refusal delta is not output", formatResponses, "event: response.refusal.delta\ndata: {\"type\":\"response.refusal.delta\",\"delta\":\"I cannot\"}\n\n", false, false},
+		{"responses reasoning delta is not visible output", formatResponses, "event: response.reasoning_summary_text.delta\ndata: {\"type\":\"response.reasoning_summary_text.delta\",\"delta\":\"thinking\"}\n\n", false, false},
+		{"responses refusal delta is not visible output", formatResponses, "event: response.refusal.delta\ndata: {\"type\":\"response.refusal.delta\",\"delta\":\"I cannot\"}\n\n", false, false},
 		{"responses incomplete content filter", formatResponses, "event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"content_filter\"}}}\n\n", false, true},
 		{"responses incomplete max tokens", formatResponses, "event: response.incomplete\ndata: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"incomplete_details\":{\"reason\":\"max_output_tokens\"}}}\n\n", false, false},
 		{"responses created", formatResponses, "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"status\":\"in_progress\"}}\n\n", false, false},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			if got := streamChunkHasOutput(testCase.format, []byte(testCase.chunk)); got != testCase.wantOutput {
-				t.Fatalf("streamChunkHasOutput = %v, want %v", got, testCase.wantOutput)
+			if got := streamChunkHasVisibleOutput(testCase.format, []byte(testCase.chunk)); got != testCase.wantVisible {
+				t.Fatalf("streamChunkHasVisibleOutput = %v, want %v", got, testCase.wantVisible)
 			}
 			if got := streamChunkRefused(testCase.format, []byte(testCase.chunk)); got != testCase.wantRefusal {
 				t.Fatalf("streamChunkRefused = %v, want %v", got, testCase.wantRefusal)
@@ -268,6 +272,84 @@ func TestRefusalFallbackStreamSwitchesBeforeFirstOutput(t *testing.T) {
 	}
 	if string(fake.streamBodies[1]) != string(fake.streamBodies[0]) {
 		t.Fatalf("fallback stream body changed: %s", fake.streamBodies[1])
+	}
+}
+
+func TestRefusalFallbackStreamSwitchesAfterLongReasoningPrelude(t *testing.T) {
+	configureRefusalTest(t)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.streamResponses[testPrimary] = pluginapi.HostModelStreamResponse{StatusCode: http.StatusOK, StreamID: "stream-primary"}
+	fake.streamResponses[testFallback] = pluginapi.HostModelStreamResponse{StatusCode: http.StatusOK, StreamID: "stream-fallback"}
+	// 200 reasoning chunks stand in for a high reasoning effort prelude: well
+	// past the old 64-chunk ceiling, and no visible token before the refusal.
+	reads := make([]fakeStreamRead, 0, 201)
+	for i := range 200 {
+		payload := fmt.Sprintf("data: {\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"step %d\"},\"finish_reason\":null}]}\n\n", i)
+		reads = append(reads, fakeStreamRead{response: pluginapi.HostModelStreamReadResponse{Payload: []byte(payload)}})
+	}
+	reads = append(reads, fakeStreamRead{response: pluginapi.HostModelStreamReadResponse{
+		Payload: []byte("data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"content_filter\"}]}\n\n"),
+		Done:    true,
+	}})
+	fake.streamReads["stream-primary"] = reads
+	fake.streamReads["stream-fallback"] = []fakeStreamRead{
+		{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"uncensored answer\"},\"finish_reason\":null}]}\n\n"), Done: true}},
+	}
+
+	raw, err := executeStream(refusalExecutorRequest(t, testAlias, "plugin-stream-reasoning-refusal"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := streamHeaderValue(t, raw, "X-Auto-Router"); got != testFallback+`;refusal-fallback;failed_from=["`+testPrimary+`"]` {
+		t.Fatalf("X-Auto-Router = %q", got)
+	}
+	if closeRequest := waitPluginClose(t, fake); closeRequest.Error != "" {
+		t.Fatalf("stream closed with %q", closeRequest.Error)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.emits) != 1 || !strings.Contains(fake.emits[0], "uncensored answer") {
+		t.Fatalf("emitted chunks = %#v", fake.emits)
+	}
+	if len(fake.streamModels) != 2 || fake.streamModels[1] != testFallback {
+		t.Fatalf("stream models = %#v", fake.streamModels)
+	}
+}
+
+func TestRefusalFallbackStreamKeepsPrimaryWhenReasoningPrecededContent(t *testing.T) {
+	configureRefusalTest(t)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.streamResponses[testPrimary] = pluginapi.HostModelStreamResponse{StatusCode: http.StatusOK, StreamID: "stream-primary"}
+	fake.streamReads["stream-primary"] = []fakeStreamRead{
+		{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"reasoning_content\":\"weighing it\"},\"finish_reason\":null}]}\n\n")}},
+		{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"here it is\"},\"finish_reason\":null}]}\n\n")}},
+		{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"), Done: true}},
+	}
+
+	raw, err := executeStream(refusalExecutorRequest(t, testAlias, "plugin-stream-reasoning-then-content"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := streamHeaderValue(t, raw, "X-Auto-Router"); got != testPrimary+";refusal-guard" {
+		t.Fatalf("X-Auto-Router = %q", got)
+	}
+	if closeRequest := waitPluginClose(t, fake); closeRequest.Error != "" {
+		t.Fatalf("stream closed with %q", closeRequest.Error)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	// The buffered reasoning chunk is flushed with the rest: nothing is lost
+	// when the guard stands down.
+	if len(fake.emits) != 3 || !strings.Contains(fake.emits[0], "weighing it") {
+		t.Fatalf("emitted chunks = %#v", fake.emits)
+	}
+	if len(fake.streamModels) != 1 {
+		t.Fatalf("stream models = %#v", fake.streamModels)
+	}
+	if len(fake.logs) != 0 {
+		t.Fatalf("unexpected logs = %#v", fake.logs)
 	}
 }
 

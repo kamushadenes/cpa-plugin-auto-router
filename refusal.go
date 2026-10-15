@@ -34,13 +34,10 @@ const (
 	responsesIncompleteType = "response.incomplete"
 )
 
-// ponytail: a refusal is terminal and arrives in the first events of a stream,
-// so the guard holds at most 64 chunks or 256 KiB of the primary stream. Past
-// that ceiling it flushes and streams through unguarded.
-const (
-	refusalGuardMaxChunks = 64
-	refusalGuardMaxBytes  = 256 << 10
-)
+// ponytail: the guard holds at most 1 MiB of the primary stream, which covers a
+// long reasoning prelude before the first visible token. Past that ceiling it
+// flushes and streams through unguarded.
+const refusalGuardMaxBytes = 1 << 20
 
 // normalizeRefusalFallback trims the configured aliases and drops incomplete
 // entries, so a half-written entry disables that alias instead of claiming a
@@ -194,8 +191,10 @@ func executeRefusalStream(req rpcExecutorRequest, alias refusalFallbackAlias) ([
 }
 
 // startRefusalGuardedStream opens the primary stream and buffers its chunks
-// until the first real assistant output (flush and stream through) or a refusal
+// until the first visible answer output (flush and stream through) or a refusal
 // with nothing emitted yet (drop the buffer and stream the fallback instead).
+// Reasoning deltas are buffered, not output: a model with reasoning enabled
+// streams thinking before it refuses, and that thinking is dropped on a switch.
 func startRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlias) (refusalGuardedStream, error) {
 	ready, err := openHostStream(context.Background(), req, alias.Primary, req.OriginalRequest)
 	if err != nil {
@@ -210,7 +209,7 @@ func startRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlia
 		if len(payload) > 0 {
 			buffered = append(buffered, payload)
 			bufferedBytes += len(payload)
-			if streamChunkHasOutput(req.SourceFormat, payload) {
+			if streamChunkHasVisibleOutput(req.SourceFormat, payload) {
 				break
 			}
 			if streamChunkRefused(req.SourceFormat, payload) {
@@ -218,7 +217,7 @@ func startRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlia
 				break
 			}
 		}
-		if done || len(buffered) >= refusalGuardMaxChunks || bufferedBytes >= refusalGuardMaxBytes {
+		if done || bufferedBytes >= refusalGuardMaxBytes {
 			break
 		}
 		payload, done, err = readHostStreamChunk(ready.streamID)
@@ -314,28 +313,33 @@ func streamChunkRefused(format string, payload []byte) bool {
 	return false
 }
 
-// streamChunkHasOutput reports whether a stream chunk carries real assistant
-// output. Role-only and empty deltas do not count, so the guard can still
-// switch models after them.
-func streamChunkHasOutput(format string, payload []byte) bool {
+// streamChunkHasVisibleOutput reports whether a stream chunk carries assistant
+// output the client can see: answer text or a tool call. Role-only deltas,
+// empty deltas and reasoning deltas do not count, so the guard can still switch
+// models after a reasoning prelude.
+//
+// The responses translators emit exactly three delta kinds: visible text as
+// "response.output_text.delta", tool arguments as
+// "response.function_call_arguments.delta", and thinking as
+// "response.reasoning_summary_text.delta"
+// (internal/translator/claude/openai/responses/claude_openai-responses_response.go
+// and internal/translator/openai/openai/responses/openai_openai-responses_response.go).
+func streamChunkHasVisibleOutput(format string, payload []byte) bool {
 	for _, data := range streamChunkEvents(payload) {
 		event := gjson.ParseBytes(data)
 		switch format {
 		case formatResponses:
-			// Every streamed delta is output except a refusal delta, which is
-			// the refusal text itself.
 			eventType := event.Get("type").String()
-			if strings.HasSuffix(eventType, ".delta") && eventType != "response.refusal.delta" &&
-				event.Get("delta").String() != "" {
+			if eventType != "response.output_text.delta" && eventType != "response.function_call_arguments.delta" {
+				continue
+			}
+			if event.Get("delta").String() != "" {
 				return true
 			}
 		case formatChatCompletions:
 			for _, choice := range event.Get("choices").Array() {
 				delta := choice.Get("delta")
-				if delta.Get("content").String() != "" ||
-					delta.Get("reasoning_content").String() != "" ||
-					delta.Get("reasoning").String() != "" ||
-					len(delta.Get("tool_calls").Array()) > 0 {
+				if delta.Get("content").String() != "" || len(delta.Get("tool_calls").Array()) > 0 {
 					return true
 				}
 			}
