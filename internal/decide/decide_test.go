@@ -400,6 +400,23 @@ func TestNextModelGoneJevUnavailableChoosesReplacement(t *testing.T) {
 	}
 }
 
+func TestShippedTableMovesFableSessionOff(t *testing.T) {
+	tb, err := table.Load("../../table/models.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, model := range []string{"claude-fable-5", "claude-fable-5-1"} {
+		prev := State{Difficulty: Hard, Model: model, Thinking: "xhigh", Tier: "top"}
+		d, err := Next(Input{Table: tb, Category: "math-data", Difficulty: Hard}, prev, true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if d.Reason != "model-gone" || d.Model == model || d.Tier != "top" {
+			t.Fatalf("session on %s must leave it on the next decision: %+v", model, d)
+		}
+	}
+}
+
 func TestNextModelGoneWithoutEligibleCandidateReturnsError(t *testing.T) {
 	tb := tbl(map[string]table.Model{
 		"flash": mk("flash", 1, nil),

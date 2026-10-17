@@ -271,6 +271,23 @@ def test_merge_filters_catalog_and_capability_exclusions():
     assert set(new.models) == {"gpt-6-astra"}
 
 
+def test_operator_tiers_never_route_fable():
+    # Fable is reserved for brainstorm/design/spec when the operator names it;
+    # the fixture table still carries both Fable ids as tier top.
+    old = merge.load(ROOT / "internal/table/testdata/generated.yaml")
+    fable = {"claude-fable-5", "claude-fable-5-1"}
+    assert fable <= set(old.models)
+    new = merge.merge(
+        old,
+        rows=[row(model, "terminal-bench-4", "xhigh", 99, 1, "2026-10-16", "") for model in fable],
+        catalog_ids=set(old.models) | fable,
+        tiers=cli._load_tiers(ROOT / "table/tiers.yaml"),
+        caps={model: {"vision": True, "cost": {"input": 1, "output": 1}} for model in fable},
+    )
+    assert not [model for model in new.models if model.startswith("claude-fable-")]
+    assert any(model.tier == "top" for model in new.models.values())
+
+
 def test_missing_capabilities_preserve_old_and_skip_fresh(caplog):
     old = merge.load(TESTDATA / "old.yaml")
     kept = merge.merge(

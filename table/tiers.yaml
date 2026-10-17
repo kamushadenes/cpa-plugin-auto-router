@@ -9,8 +9,10 @@
 #   deepseek-v4-flash-vision-exp  - experimental.
 #   kimi-k2.7-code                - weak Artificial Analysis score (26 vs tiered peers); 128-256k context.
 #   qwen-3.8-27b                  - weak Artificial Analysis score (34 xhigh vs tiered peers); 128-256k context.
+#   claude-fable-5                - operator policy: brainstorm, design and spec only, when requested by name; never routed.
+#   claude-fable-5-1              - operator policy: brainstorm, design and spec only, when requested by name; never routed.
 flash: [glm-5.3-flash, deepseek-v4-flash, qwen-3.8-flash-next, mimo-v2.6-flash, qwen-3.7-flash]
 mid:   [gpt-5.6-luna, gpt-6-luna, gpt-5.6-terra, glm-5.3, kimi-k3, claude-sonnet-5,
         deepseek-v4-pro, qwen-3.8-max, minimax-m3, claude-haiku-5-5, mimo-v2.6-pro]
 top:   [gpt-6-astra, gpt-6-sol, gpt-5.6-sol, claude-opus-5, claude-opus-5-5,
-        claude-fable-5, claude-fable-5-1, gpt-6.1-sol, claude-sonnet-5-5]
+        gpt-6.1-sol, claude-sonnet-5-5]
