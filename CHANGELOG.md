@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- The plugin now builds against CLIProxyAPI v8, for v8 proxy hosts.
 - `make install` now ships a version-named plugin file that the running proxy picks up without a restart.
 - The router no longer picks `claude-fable-5` or `claude-fable-5-1`; they are now used only when requested by name.
 

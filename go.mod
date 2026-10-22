@@ -3,7 +3,7 @@ module github.com/kamushadenes/cpa-plugin-auto-router
 go 1.27
 
 require (
-	github.com/router-for-me/CLIProxyAPI/v7 v7.0.0
+	github.com/router-for-me/CLIProxyAPI/v8 v8.0.0
 	github.com/tidwall/gjson v1.18.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -13,4 +13,4 @@ require (
 	github.com/tidwall/pretty v1.2.0 // indirect
 )
 
-replace github.com/router-for-me/CLIProxyAPI/v7 => /home/hermes/projects/CLIProxyAPI
+replace github.com/router-for-me/CLIProxyAPI/v8 => /home/hermes/projects/CLIProxyAPI

@@ -17,8 +17,8 @@ import (
 	"github.com/kamushadenes/cpa-plugin-auto-router/internal/session"
 	"github.com/kamushadenes/cpa-plugin-auto-router/internal/snippet"
 	"github.com/kamushadenes/cpa-plugin-auto-router/internal/table"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginabi"
-	"github.com/router-for-me/CLIProxyAPI/v7/sdk/pluginapi"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
+	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"gopkg.in/yaml.v3"
 )
 
@@ -224,7 +224,7 @@ func pluginRegistration() registration {
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata: pluginapi.Metadata{
 			Name:             "auto-router",
-			Version:          "0.1.9",
+			Version:          "0.2.0",
 			Author:           "kamushadenes",
 			GitHubRepository: "https://github.com/kamushadenes/cpa-plugin-auto-router",
 			ConfigFields: []pluginapi.ConfigField{
