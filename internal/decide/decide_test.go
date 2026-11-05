@@ -169,6 +169,30 @@ func TestUnknownCategoryUsesGeneral(t *testing.T) {
 	}
 }
 
+func TestMathDataRanksByArenaMathBeforeGPQA(t *testing.T) {
+	tb := tbl(map[string]table.Model{
+		"a": mk("top", 10, map[string][]table.Score{
+			"gpqa-diamond": {{Value: 94.4, Margin: 0.2}},
+			"arena-math":   {{Value: 1486, Margin: 10}},
+		}),
+		"b": mk("top", 20, map[string][]table.Score{
+			"gpqa-diamond": {{Value: 90.2, Margin: 0.3}},
+			"arena-math":   {{Value: 1520, Margin: 10}},
+		}),
+	})
+	c, err := Choose(Input{Table: tb, Category: "math-data", Difficulty: Hard})
+	if err != nil || c.Model != "b" || c.Benchmark != "arena-math" {
+		t.Fatalf("arena-math must decide math-data: %+v %v", c, err)
+	}
+	for _, id := range []string{"a", "b"} {
+		delete(tb.Models[id].Scores, "arena-math")
+	}
+	c, err = Choose(Input{Table: tb, Category: "math-data", Difficulty: Hard})
+	if err != nil || c.Model != "a" || c.Benchmark != "gpqa-diamond" {
+		t.Fatalf("gpqa-diamond must decide math-data without arena-math: %+v %v", c, err)
+	}
+}
+
 func TestExtractionPicksCheapest(t *testing.T) {
 	tb := tbl(map[string]table.Model{"x": mk("flash", 3, nil), "y": mk("flash", 1, nil)})
 	c, _ := Choose(Input{Table: tb, Category: "extraction", Difficulty: Trivial})
