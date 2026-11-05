@@ -200,7 +200,7 @@ func questions() map[string]question {
 		"design_only":     {Type: "noul", Instructions: "Does `request` want a plan, architecture or spec rather than code now?"},
 		"many_steps":      {Type: "noul", Instructions: "Will fulfilling `request` require chaining several shell commands, tools or files?"},
 		"transform_only":  {Type: "noul", Instructions: "Is `request` just extracting, reformatting or classifying given data?"},
-		"exact_answer":    {Type: "noul", Instructions: "Does `request` ask for a number or figure that can be computed or verified from given data?"},
+		"exact_answer":    {Type: "noul", Instructions: "Is `request` a math, statistics or quantitative estimation problem whose answer is a number or formula, rather than work on code, documents or systems that merely mentions numbers such as IDs, SHAs, PR numbers or counts?"},
 		"writes_tests":    {Type: "noul", Instructions: "Does `request` ask to write or add tests for code?"},
 		"effort": {Type: "score", Instructions: effortInstructions, Criteria: []string{
 			"a minute: one-liner, lookup or trivial edit",
