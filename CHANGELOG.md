@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-05
+
+### Changed
+- `math-data` requests now rank models by Arena Math before GPQA Diamond; GPQA is multiple-choice science QA, and these requests are numeric data analysis.
+
+## [0.2.0] - 2026-10-22
+
 ### Changed
 - The plugin now builds against CLIProxyAPI v8, for v8 proxy hosts.
 - `make install` now ships a version-named plugin file that the running proxy picks up without a restart.

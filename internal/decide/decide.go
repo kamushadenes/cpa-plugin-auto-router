@@ -37,7 +37,7 @@ var benchByCategory = map[string][]string{
 	"spec-design":      {"arena-hard-prompts", "aa-intelligence-index", "gdpval-aa"},
 	"writing":          {"arena-creative-writing", "arena-instruction-following"},
 	"extraction":       {},
-	"math-data":        {"gpqa-diamond", "arena-math"},
+	"math-data":        {"arena-math", "gpqa-diamond"},
 }
 
 var generalFallback = []string{"arena-overall", "aa-intelligence-index"}
