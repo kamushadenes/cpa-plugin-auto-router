@@ -204,7 +204,7 @@ entrada em fev/2026, nenhum modelo atual.
 | `spec-design` | Arena text `hard_prompts`; AA Intelligence; GDPval-AA | raciocínio aberto e longo; trabalho profissional |
 | `writing` | Arena text `creative_writing`; Arena text `instruction_following` | escrita; obedecer formato |
 | `extraction` | nenhum — tier flash, vence o mais barato | tarefa não discrimina modelo |
-| `math-data` | GPQA Diamond (AA); Arena text `math` | ciência/dados com gabarito; preferência em matemática |
+| `math-data` | Arena text `math`; GPQA Diamond (AA) | preferência humana em matemática; ciência com gabarito como reserva |
 
 Sem score em nenhum benchmark da lista para os candidatos do tier → Arena
 text `overall` (cobre 19 dos 27 modelos, atualização semanal).
