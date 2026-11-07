@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Hermes provider plugin `cliproxy-guarded` sends guarded-alias requests without streaming (#29).
+
 ## [0.2.2] - 2026-11-05
 
 ### Changed
