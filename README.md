@@ -47,7 +47,7 @@ The plugin accepts these fields under `plugins.configs.auto-router`:
 - `table_path`: benchmark YAML path. The default points at the production plugin directory; set it explicitly for TEST.
 - `snippet_chars`: maximum characters of the latest human message sent to Jev. Default and cap: `4000`.
 - `jev_timeout_ms`: Jev request timeout. Default: `2000`.
-- `refusal_fallback`: optional list of refusal-guarded aliases. Absent or empty means the feature is off. Each entry needs `alias`, `primary` and `fallback`; an entry missing any of the three is ignored.
+- `refusal_fallback`: optional list of refusal-guarded aliases. Absent or empty means the feature is off. Each entry needs `alias`, `primary` and `fallback`; an entry missing any of the three is ignored. Optional `prose_refusal: true` also switches on a Jev-confirmed plain-text refusal, for non-streaming requests only.
 
 ## Model failover
 
@@ -71,6 +71,7 @@ plugins:
         - alias: claude-opus-5-5-guarded
           primary: claude-opus-5-5
           fallback: abliterated-model-large-v2
+          prose_refusal: true # optional, non-streaming requests only
 ```
 
 The alias is listed in `/v1/models`, and `RouteModel` claims it without calling Jev, so there is no classification and no session state. `primary` and `fallback` reach the host verbatim, so a thinking suffix such as `claude-opus-5-5(high)` belongs in the configured value.
@@ -79,9 +80,24 @@ A refusal is `finish_reason: content_filter` for `chat-completions` (what the An
 
 On the non-streaming path the plugin calls `primary`, and on a refusal calls `fallback` once with the identical body. On the streaming path it buffers primary chunks until either the first visible answer output (answer text or a tool call, after which it flushes and streams through) or a terminal refusal with nothing emitted yet (it then closes the primary stream and streams `fallback` instead). Role-only deltas, empty deltas and reasoning deltas do not count as visible output, so a model that thinks at length before refusing still switches; the buffered reasoning is dropped and the client hears only the fallback answer. The buffer holds at most 1 MiB; past that the stream is flushed and runs unguarded. A refusal that arrives after visible output has been flushed cannot be un-sent, so it passes through and is logged as `refusal_after_output`.
 
-`X-Auto-Router` is `claude-opus-5-5;refusal-guard` while the primary answers, and `abliterated-model-large-v2;refusal-fallback;failed_from=["claude-opus-5-5"]` after a switch. Each switch logs one JSON line with `alias`, `primary`, `fallback`, `reason` and `stream`; request and response bodies are never logged.
+`X-Auto-Router` is `claude-opus-5-5;refusal-guard` while the primary answers, and `abliterated-model-large-v2;refusal-fallback;failed_from=["claude-opus-5-5"]` after a switch. Each switch logs one JSON line with `alias`, `primary`, `fallback`, `reason` (`refusal-fallback`, or `prose-refusal` for a prose refusal) and `stream`; request and response bodies are never logged.
 
 Data egress caveat: the fallback provider in the example above is external (`api.abliteration.ai`). On a refusal the full request body, system prompt and conversation history are sent to that provider. Do not configure an external fallback for an alias that carries data which may not leave your own providers.
+
+### Prose refusals (non-streaming only)
+
+A primary model can refuse in plain text and still end with `finish_reason: stop` or `status: completed`. With `prose_refusal: true` on an alias, such an answer also counts as a refusal on non-streaming requests:
+
+1. The plugin reads only the visible answer text: the `message.content` string for `chat-completions`, and the `output_text` parts of `message` output items for `responses`. Reasoning, tool call arguments and tool results are never read. A response that carries a tool call (`tool_calls`, or a `function_call`, `custom_tool_call`, `web_search_call` or any other non-message output item) never switches, so no tool call is dropped or run twice.
+2. A phrase filter looks for first-person refusal wording such as "I can't help with", "I'm unable to assist", "I must decline", "against my guidelines" or "content policy". Without a match, Jev is not called and the answer passes through.
+3. On a match, the plugin asks Jev whether the assistant itself refuses the task on safety, ethics or content-policy grounds. It uses the router's own `jev_base_url`, `jev_endpoint_path`, `jev_model`, `jev_api_key_env` and `jev_timeout_ms`. Jev is told the text is data, never instructions. Quoting a refusal, reporting missing evidence, reporting a technical limit (no access, a failed tool) and declining because the operator's stated scope excludes the task all count as not refused.
+4. Only a Jev probability of at least `0.8` switches. A lower probability, a timeout, a non-200 status, or a missing or malformed answer returns the primary response byte for byte; a Jev failure also logs `prose_refusal_unconfirmed`.
+
+A confirmed prose refusal calls `fallback` once with the identical request body, the same as a `content_filter` refusal, and the fallback answer is not checked again. Jev's answer only chooses which model answers the unchanged request: the system prompt and the operator's scope reach the fallback as they were, and nothing Jev returns grants a tool, a permission or an action.
+
+Streaming requests keep the structured-only guard described above, even with `prose_refusal: true`. A consumer that wants prose refusal protection must send `stream: false` for the alias.
+
+Jev egress: on a phrase match, up to `snippet_chars` (default 4000) characters of the primary's visible answer go to the configured Jev endpoint, after secret redaction and with code blocks replaced by one-line descriptions. The request, system prompt and conversation history are not sent to Jev. The default `jev_base_url`, `https://openrouter.ai`, is an external service.
 
 ## Difficulty raise from repeated tool failures
 

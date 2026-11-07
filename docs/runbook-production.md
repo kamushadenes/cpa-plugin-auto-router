@@ -67,3 +67,19 @@ curl -fsS -H "Authorization: Bearer $KEY" http://10.23.23.12:8317/v1/models | gr
 # plugins/auto-router-v<old>.so (removing the new one) and append another deploy comment line to
 # config.yaml so the host re-evaluates the plugin set.
 ```
+
+## Enabling prose refusal on a guarded alias
+
+Needs plugin `0.2.3` or later, deployed as above and reviewed. `prose_refusal` only acts on non-streaming requests, so first confirm that the consumer sends `stream: false` for the alias; streaming requests keep the structured-only guard.
+
+```bash
+# 1. In /opt/cliproxy/config.yaml on the LXC, add `prose_refusal: true` to the alias entry under
+#    plugins.configs.auto-router.refusal_fallback. The config change hot-reloads; no restart.
+#    It reuses the existing jev_base_url, jev_endpoint_path, jev_model, jev_api_key_env and
+#    jev_timeout_ms: there is no new endpoint or secret. On a refusal phrase match, up to
+#    snippet_chars characters of the redacted visible answer go to that Jev endpoint.
+# 2. Verify: switches log reason "prose-refusal"; Jev failures log "prose_refusal_unconfirmed"
+#    and keep the primary answer.
+ssh root@10.23.23.12 'journalctl -u cliproxyapi --since "1 hour ago" --no-pager | grep -E "prose-refusal|prose_refusal_unconfirmed"'
+# Rollback: remove the key or set `prose_refusal: false` (hot-reload).
+```

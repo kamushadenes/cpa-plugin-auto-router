@@ -293,3 +293,59 @@ func TestValidateURLPolicy(t *testing.T) {
 		})
 	}
 }
+
+func TestRefusalSendsOnlyTheResponseAndReadsTheProbability(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			Model     string              `json:"model"`
+			State     map[string]string   `json:"state"`
+			Questions map[string]question `json:"questions"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Errorf("decode request: %v", err)
+		}
+		if r.URL.Path != "/decide" || r.Header.Get("Authorization") != "Bearer secret" || payload.Model != "jev" {
+			t.Errorf("path/auth/model = %q/%q/%q", r.URL.Path, r.Header.Get("Authorization"), payload.Model)
+		}
+		if len(payload.State) != 1 || payload.State["response"] != "I can't help with that." {
+			t.Errorf("state = %#v", payload.State)
+		}
+		asked, ok := payload.Questions["refuses_task"]
+		if len(payload.Questions) != 1 || !ok || asked.Type != "noul" || !strings.Contains(asked.Instructions, "`response`") || asked.Criteria == nil {
+			t.Errorf("questions = %#v", payload.Questions)
+		}
+		_, _ = w.Write([]byte(`{"answers":{"refuses_task":{"noul":0.93}}}`))
+	}))
+	defer server.Close()
+
+	probability, err := Refusal(context.Background(), Config{BaseURL: server.URL, EndpointPath: "/decide", Model: "jev", APIKey: "secret", Timeout: time.Second}, "I can't help with that.")
+	if err != nil || probability != 0.93 {
+		t.Fatalf("Refusal = %v, %v", probability, err)
+	}
+}
+
+func TestRefusalRejectsFailuresAndMalformedAnswers(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"server error", http.StatusInternalServerError, `{"answers":{"refuses_task":{"noul":0.9}}}`},
+		{"not json", http.StatusOK, `not json`},
+		{"missing answer", http.StatusOK, `{"answers":{}}`},
+		{"non-numeric noul", http.StatusOK, `{"answers":{"refuses_task":{"noul":"high"}}}`},
+		{"out of range noul", http.StatusOK, `{"answers":{"refuses_task":{"noul":1.5}}}`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+			_, err := Refusal(context.Background(), Config{BaseURL: server.URL, Model: "jev", APIKey: "secret", Timeout: time.Second}, "I can't help with that.")
+			if !errors.Is(err, ErrUnavailable) {
+				t.Fatalf("error = %v, want ErrUnavailable", err)
+			}
+		})
+	}
+}

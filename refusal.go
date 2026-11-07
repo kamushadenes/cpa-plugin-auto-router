@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/jev"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/snippet"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/tidwall/gjson"
@@ -18,10 +21,13 @@ import (
 // Primary, and are re-run on Fallback only when Primary refuses on safety
 // grounds. Primary and Fallback reach the host verbatim, so a thinking suffix
 // such as "claude-opus-5-5(high)" belongs in the configured value.
+// ProseRefusal also treats a Jev-confirmed prose refusal as a refusal, on the
+// non-streaming path only.
 type refusalFallbackAlias struct {
-	Alias    string `yaml:"alias"`
-	Primary  string `yaml:"primary"`
-	Fallback string `yaml:"fallback"`
+	Alias        string `yaml:"alias"`
+	Primary      string `yaml:"primary"`
+	Fallback     string `yaml:"fallback"`
+	ProseRefusal bool   `yaml:"prose_refusal"`
 }
 
 const (
@@ -38,6 +44,24 @@ const (
 // long reasoning prelude before the first visible token. Past that ceiling it
 // flushes and streams through unguarded.
 const refusalGuardMaxBytes = 1 << 20
+
+// refusalProseReason logs a switch on a Jev-confirmed prose refusal;
+// proseRefusalUnconfirmedLog logs a prose candidate kept because Jev failed.
+const (
+	refusalProseReason         = "prose-refusal"
+	proseRefusalUnconfirmedLog = "prose_refusal_unconfirmed"
+)
+
+// proseRefusalThreshold is the Jev probability a prose refusal needs before the
+// alias switches. A switch sends the whole conversation to the fallback
+// provider, so an uncertain answer keeps the primary response.
+const proseRefusalThreshold = 0.8
+
+// proseRefusalCue matches first-person refusal phrasing. It only decides
+// whether Jev is asked; Jev decides whether the answer is a refusal.
+var proseRefusalCue = regexp.MustCompile(`(?i)\bi(?:'m| am)? (?:can(?:not|'t| not)|won't|will not|unable to|not able to|not going to)(?: be able to)? (?:help|assist|provide|create|write|generate|produce|comply|fulfill|engage|support|do that|do this)\b` +
+	`|\bi(?: must| have to| need to| will|'m going to| am going to) decline\b` +
+	`|\bagainst my (?:guidelines|principles|values)\b|\b(?:content|usage) polic(?:y|ies)\b`)
 
 // normalizeRefusalFallback trims the configured aliases and drops incomplete
 // entries, so a half-written entry disables that alias instead of claiming a
@@ -98,7 +122,13 @@ func executeRefusal(req rpcExecutorRequest, alias refusalFallbackAlias) ([]byte,
 	}
 	model := alias.Primary
 	var failed []string
+	reason := ""
 	if refusedResponse(req.SourceFormat, response.Body) {
+		reason = refusalFallbackReason
+	} else if alias.ProseRefusal && proseRefused(req, alias, response.Body) {
+		reason = refusalProseReason
+	}
+	if reason != "" {
 		fallback, fallbackErr := executeRefusalModel(req, alias.Fallback)
 		if fallbackErr != nil {
 			return errorEnvelope("executor_error", fallbackErr.Error()), nil
@@ -106,7 +136,7 @@ func executeRefusal(req rpcExecutorRequest, alias refusalFallbackAlias) ([]byte,
 		response = fallback
 		model = alias.Fallback
 		failed = []string{alias.Primary}
-		logRefusalFallback(req, alias, refusalFallbackReason, false)
+		logRefusalFallback(req, alias, reason, false)
 	}
 	headers := cloneHeaders(response.Headers)
 	if headers == nil {
@@ -117,6 +147,61 @@ func executeRefusal(req rpcExecutorRequest, alias refusalFallbackAlias) ([]byte,
 	}
 	headers.Set("X-Auto-Router", refusalRouterHeader(model, failed))
 	return okEnvelope(pluginapi.ExecutorResponse{Payload: response.Body, Headers: headers})
+}
+
+// proseRefused reports a Jev-confirmed prose refusal. Jev is asked only when
+// the visible answer carries refusal phrasing, and any Jev failure keeps the
+// primary answer. Jev only picks which model answers the unchanged request.
+func proseRefused(req rpcExecutorRequest, alias refusalFallbackAlias, body []byte) bool {
+	text := visibleAnswerText(req.SourceFormat, body)
+	if !proseRefusalCue.MatchString(strings.ReplaceAll(text, "’", "'")) {
+		return false
+	}
+	cfg := loadedConfig()
+	probability, err := jev.Refusal(context.Background(), jevConfig(cfg), snippet.Prepare(text, cfg.SnippetChars))
+	if err != nil {
+		logRefusalFallback(req, alias, proseRefusalUnconfirmedLog, false)
+		return false
+	}
+	return probability >= proseRefusalThreshold
+}
+
+// visibleAnswerText returns the assistant answer text of a non-streaming body
+// in the host's exit format: message.content strings for chat-completions, and
+// output_text parts of message items for responses (see the translator shapes
+// below). Reasoning and tool arguments are never returned. A response with a
+// tool call yields "": the primary acted, and a switch would drop that call.
+func visibleAnswerText(format string, body []byte) string {
+	root := gjson.ParseBytes(body)
+	var parts []string
+	switch format {
+	case formatChatCompletions:
+		for _, choice := range root.Get("choices").Array() {
+			message := choice.Get("message")
+			if len(message.Get("tool_calls").Array()) > 0 {
+				return ""
+			}
+			if content := message.Get("content"); content.Type == gjson.String {
+				parts = append(parts, content.String())
+			}
+		}
+	case formatResponses:
+		for _, item := range root.Get("output").Array() {
+			switch item.Get("type").String() {
+			case "reasoning":
+			case "message":
+				for _, part := range item.Get("content").Array() {
+					if part.Get("type").String() == "output_text" {
+						parts = append(parts, part.Get("text").String())
+					}
+				}
+			default:
+				// function_call, custom_tool_call, web_search_call and the other tool items.
+				return ""
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func executeRefusalModel(req rpcExecutorRequest, model string) (pluginapi.HostModelExecutionResponse, error) {

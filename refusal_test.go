@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 )
@@ -482,4 +484,236 @@ func streamHeaderValue(t *testing.T, raw []byte, key string) string {
 		t.Fatal(err)
 	}
 	return result.Headers.Get(key)
+}
+
+const (
+	proseChatRequest      = `{"messages":[{"role":"user","content":"curate the learnings"}]}`
+	proseResponsesRequest = `{"input":[{"role":"user","content":[{"type":"input_text","text":"curate the learnings"}]}]}`
+)
+
+// proseJev is a fake Jev endpoint that records the response text it was asked about.
+type proseJev struct {
+	url  string
+	mu   sync.Mutex
+	seen []string
+}
+
+func (j *proseJev) requests() []string {
+	j.mu.Lock()
+	defer j.mu.Unlock()
+	return append([]string(nil), j.seen...)
+}
+
+func startProseJev(t *testing.T, answer http.HandlerFunc) *proseJev {
+	t.Helper()
+	fake := &proseJev{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var payload struct {
+			State struct {
+				Response string `json:"response"`
+			} `json:"state"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&payload)
+		fake.mu.Lock()
+		fake.seen = append(fake.seen, payload.State.Response)
+		fake.mu.Unlock()
+		answer(w, r)
+	}))
+	t.Cleanup(server.Close)
+	fake.url = server.URL
+	return fake
+}
+
+func jevBody(body string) http.HandlerFunc {
+	return func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(body)) }
+}
+
+func jevNoul(noul string) http.HandlerFunc {
+	return jevBody(`{"answers":{"refuses_task":{"noul":` + noul + `}}}`)
+}
+
+func jevHang(w http.ResponseWriter, r *http.Request) {
+	select {
+	case <-r.Context().Done():
+	case <-time.After(2 * time.Second):
+	}
+}
+
+func configureProseRefusalTest(t *testing.T, jevURL string, prose bool) {
+	t.Helper()
+	t.Setenv("TEST_JEV_KEY", "test-key")
+	pending = sync.Map{}
+	configYAML := fmt.Sprintf("enabled: true\njev_api_key_env: TEST_JEV_KEY\njev_base_url: %s\njev_timeout_ms: 100\ntable_path: testdata/models.yaml\n"+
+		"refusal_fallback:\n  - alias: %s\n    primary: %s\n    fallback: %s\n    prose_refusal: %t\n", jevURL, testAlias, testPrimary, testFallback, prose)
+	config, err := json.Marshal(lifecycleRequest{ConfigYAML: []byte(configYAML)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := configure(config); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func proseExecutorRequest(t *testing.T, format, streamID string) []byte {
+	t.Helper()
+	body := proseChatRequest
+	if format == formatResponses {
+		body = proseResponsesRequest
+	}
+	req := rpcExecutorRequest{ExecutorRequest: pluginapi.ExecutorRequest{
+		Model:           testAlias,
+		SourceFormat:    format,
+		OriginalRequest: []byte(body),
+	}}
+	req.StreamID = streamID
+	raw, err := json.Marshal(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+// The fixtures follow the CLIProxyAPI non-streaming translators: chat-completions
+// carries message.content, reasoning_content and tool_calls; responses carries
+// output items of type reasoning, message (output_text parts) and function_call.
+var proseFixtures = map[string]map[string]string{
+	formatChatCompletions: {
+		"refusal":   `{"id":"c1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"I'm sorry, but I can't help with that request.","reasoning_content":"weighing the request"},"finish_reason":"stop"}]}`,
+		"answer":    `{"id":"c1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"Here are the curated learnings."},"finish_reason":"stop"}]}`,
+		"quoted":    `{"id":"c1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"The ticket quotes the old bot: \"I can't help with that.\" The new bot answers it."},"finish_reason":"stop"}]}`,
+		"tool_call": `{"id":"c1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"I can't help with that until I read the file.","tool_calls":[{"id":"call_1","type":"function","function":{"name":"read_file","arguments":"{\"note\":\"I cannot assist with this\"}"}}]},"finish_reason":"tool_calls"}]}`,
+		"reasoning": `{"id":"c1","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"Here are the curated learnings.","reasoning_content":"I can't help with that, or can I?"},"finish_reason":"stop"}]}`,
+		"fallback":  `{"id":"c2","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"fallback answer"},"finish_reason":"stop"}]}`,
+	},
+	formatResponses: {
+		"refusal":   `{"id":"r1","object":"response","status":"completed","incomplete_details":null,"output":[{"id":"rs_1","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"weighing the request"}]},{"id":"msg_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","annotations":[],"text":"I can’t assist with this request."}]}]}`,
+		"answer":    `{"id":"r1","object":"response","status":"completed","incomplete_details":null,"output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","annotations":[],"text":"Here are the curated learnings."}]}]}`,
+		"quoted":    `{"id":"r1","object":"response","status":"completed","incomplete_details":null,"output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","annotations":[],"text":"The ticket quotes the old bot: \"I can't assist with this.\" The new bot answers it."}]}]}`,
+		"tool_call": `{"id":"r1","object":"response","status":"completed","incomplete_details":null,"output":[{"id":"msg_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","annotations":[],"text":"I can't assist until I read the file."}]},{"id":"fc_1","type":"function_call","status":"completed","call_id":"call_1","name":"read_file","arguments":"{\"note\":\"I cannot assist with this\"}"}]}`,
+		"reasoning": `{"id":"r1","object":"response","status":"completed","incomplete_details":null,"output":[{"id":"rs_1","type":"reasoning","status":"completed","summary":[{"type":"summary_text","text":"I cannot help with this, or can I?"}]},{"id":"msg_1","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","annotations":[],"text":"Here are the curated learnings."}]}]}`,
+		"fallback":  `{"id":"r2","object":"response","status":"completed","incomplete_details":null,"output":[{"id":"msg_2","type":"message","status":"completed","role":"assistant","content":[{"type":"output_text","annotations":[],"text":"fallback answer"}]}]}`,
+	},
+}
+
+func TestProseRefusalNonStream(t *testing.T) {
+	tests := []struct {
+		name         string
+		prose        bool
+		primary      string
+		jev          http.HandlerFunc
+		wantJevCalls int
+		wantFallback bool
+		wantLog      string
+	}{
+		{"confirmed refusal switches", true, "refusal", jevNoul("0.97"), 1, true, refusalProseReason},
+		{"uncertain jev keeps primary", true, "refusal", jevNoul("0.5"), 1, false, ""},
+		{"no refusal phrase skips jev", true, "answer", jevNoul("0.97"), 0, false, ""},
+		{"quoted refusal rejected by jev", true, "quoted", jevNoul("0.04"), 1, false, ""},
+		{"jev timeout keeps primary", true, "refusal", jevHang, 1, false, proseRefusalUnconfirmedLog},
+		{"jev malformed keeps primary", true, "refusal", jevBody(`{"answers":{"refuses_task":{"noul":"high"}}}`), 1, false, proseRefusalUnconfirmedLog},
+		{"jev missing answer keeps primary", true, "refusal", jevBody(`{"answers":{}}`), 1, false, proseRefusalUnconfirmedLog},
+		{"tool call is never a refusal", true, "tool_call", jevNoul("0.97"), 0, false, ""},
+		{"reasoning is not refusal text", true, "reasoning", jevNoul("0.97"), 0, false, ""},
+		{"alias without opt-in skips jev", false, "refusal", jevNoul("0.97"), 0, false, ""},
+	}
+	for _, format := range []string{formatChatCompletions, formatResponses} {
+		for _, testCase := range tests {
+			t.Run(format+"/"+testCase.name, func(t *testing.T) {
+				jev := startProseJev(t, testCase.jev)
+				configureProseRefusalTest(t, jev.url, testCase.prose)
+				fake := newFakeHostCalls()
+				installFakeHost(t, fake)
+				primaryBody := proseFixtures[format][testCase.primary]
+				fallbackBody := proseFixtures[format]["fallback"]
+				fake.executeResponses[testPrimary] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusOK, Body: []byte(primaryBody)}
+				fake.executeResponses[testFallback] = pluginapi.HostModelExecutionResponse{StatusCode: http.StatusOK, Body: []byte(fallbackBody)}
+
+				raw, err := execute(proseExecutorRequest(t, format, ""))
+				if err != nil {
+					t.Fatal(err)
+				}
+				env, response := decodeHostEnvelope(t, raw)
+				if !env.OK {
+					t.Fatalf("envelope = %#v", env.Error)
+				}
+				seen := jev.requests()
+				if len(seen) != testCase.wantJevCalls {
+					t.Fatalf("jev calls = %d, want %d", len(seen), testCase.wantJevCalls)
+				}
+				if testCase.wantFallback {
+					if string(response.Payload) != fallbackBody {
+						t.Fatalf("payload = %s", response.Payload)
+					}
+					if got := response.Headers.Get("X-Auto-Router"); got != testFallback+`;refusal-fallback;failed_from=["`+testPrimary+`"]` {
+						t.Fatalf("X-Auto-Router = %q", got)
+					}
+					if len(fake.executeModels) != 2 || fake.executeModels[1] != testFallback {
+						t.Fatalf("executed models = %#v", fake.executeModels)
+					}
+					if string(fake.executeBodies[1]) != string(fake.executeBodies[0]) {
+						t.Fatalf("fallback body changed: %s", fake.executeBodies[1])
+					}
+					// Jev sees the visible answer only, never the reasoning.
+					if !strings.Contains(seen[0], "assist with this request") && !strings.Contains(seen[0], "help with that request") || strings.Contains(seen[0], "weighing") {
+						t.Fatalf("jev response state = %q", seen[0])
+					}
+				} else {
+					if string(response.Payload) != primaryBody {
+						t.Fatalf("primary payload changed: %s", response.Payload)
+					}
+					if got := response.Headers.Get("X-Auto-Router"); got != testPrimary+";refusal-guard" {
+						t.Fatalf("X-Auto-Router = %q", got)
+					}
+					if len(fake.executeModels) != 1 {
+						t.Fatalf("executed models = %#v", fake.executeModels)
+					}
+				}
+				if testCase.wantLog != "" {
+					refusalLogFields(t, fake, testCase.wantLog)
+				} else if !testCase.wantFallback && len(fake.logs) != 0 {
+					t.Fatalf("unexpected logs = %#v", fake.logs)
+				}
+				for _, entry := range fake.logs {
+					logged, _ := json.Marshal(entry)
+					if strings.Contains(string(logged), "with this") || strings.Contains(string(logged), "with that") {
+						t.Fatalf("log carries response text: %s", logged)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestProseRefusalLeavesStreamingUnchanged(t *testing.T) {
+	jev := startProseJev(t, jevNoul("0.97"))
+	configureProseRefusalTest(t, jev.url, true)
+	fake := newFakeHostCalls()
+	installFakeHost(t, fake)
+	fake.streamResponses[testPrimary] = pluginapi.HostModelStreamResponse{StatusCode: http.StatusOK, StreamID: "stream-primary"}
+	fake.streamReads["stream-primary"] = []fakeStreamRead{
+		{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"I can't help with that request.\"},\"finish_reason\":null}]}\n\n")}},
+		{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"), Done: true}},
+	}
+
+	raw, err := executeStream(proseExecutorRequest(t, formatChatCompletions, "plugin-stream-prose"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := streamHeaderValue(t, raw, "X-Auto-Router"); got != testPrimary+";refusal-guard" {
+		t.Fatalf("X-Auto-Router = %q", got)
+	}
+	if closeRequest := waitPluginClose(t, fake); closeRequest.Error != "" {
+		t.Fatalf("stream closed with %q", closeRequest.Error)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.emits) != 2 || !strings.Contains(fake.emits[0], "help with that request") {
+		t.Fatalf("emitted chunks = %#v", fake.emits)
+	}
+	if len(fake.streamModels) != 1 || fake.streamModels[0] != testPrimary {
+		t.Fatalf("stream models = %#v", fake.streamModels)
+	}
+	if calls := len(jev.requests()); calls != 0 {
+		t.Fatalf("streaming called jev %d times", calls)
+	}
 }
