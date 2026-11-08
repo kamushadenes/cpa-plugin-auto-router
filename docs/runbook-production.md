@@ -72,6 +72,8 @@ curl -fsS -H "Authorization: Bearer $KEY" http://10.23.23.12:8317/v1/models | gr
 
 Needs plugin `0.2.3` or later, deployed as above and reviewed. `prose_refusal` only acts on non-streaming requests, so first confirm that the consumer sends `stream: false` for the alias; streaming requests keep the structured-only guard.
 
+`0.2.3` also repairs the structured `content_filter` guard, which matched the plugin's own format names and therefore never fired on this proxy. Both guards now read the entry protocol identifiers the proxy sends (`openai`, `openai-response`). Expect refusal switches on guarded aliases to start appearing in the log after this version is active, on streaming and non-streaming requests alike, even with `prose_refusal` left off. `make smoke` on the build host exercises both guards against a synthetic host before deployment.
+
 ```bash
 # 1. In /opt/cliproxy/config.yaml on the LXC, add `prose_refusal: true` to the alias entry under
 #    plugins.configs.auto-router.refusal_fallback. The config change hot-reloads; no restart.

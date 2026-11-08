@@ -11,7 +11,7 @@ PROD_CONFIG := /opt/cliproxy/config.yaml
 INSTALL_DIR := /opt/cliproxy/plugins
 TEST_INSTALL_DIR := /home/hermes/cliproxyapi-test/plugins
 
-.PHONY: build test install clean
+.PHONY: build test smoke install clean
 build: $(PLUGIN)
 $(PLUGIN): $(shell find . -name '*.go' -not -path './updater/*') go.mod
 	mkdir -p $(BIN_DIR)
@@ -20,6 +20,12 @@ $(PLUGIN): $(shell find . -name '*.go' -not -path './updater/*') go.mod
 test:
 	go test ./...
 	cd updater && uv run --with pyyaml --with pyarrow --with pytest --python 3.12 python -m pytest -q
+# Loads the built plugin through the ABI with a synthetic host and a local fake Jev
+# (no provider call, no key). scripts/plugin_smoke.py --help lists the cases.
+smoke: build
+	python3 scripts/plugin_smoke.py --case refusal-en
+	python3 scripts/plugin_smoke.py --case refusal-pt --source-format openai-response
+	python3 scripts/plugin_smoke.py --case structured --prose-refusal false
 # The plugin set is only re-evaluated on a config reload, and the watcher reloads only on a config
 # content change: append a deploy marker (the existing convention at the end of config.yaml).
 install: build

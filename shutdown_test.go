@@ -18,6 +18,28 @@ func resetPluginLifecycleForTest() {
 	streamLifecycle = newPluginStreamLifecycle()
 }
 
+// waitPluginStreamsIdle blocks until every stream worker of the current
+// lifecycle has finished its last read of the package globals: both counters
+// reach zero under the lifecycle mutex, which orders those reads before the
+// caller's cleanup swaps hostCall or the lifecycle itself.
+func waitPluginStreamsIdle(t *testing.T) {
+	t.Helper()
+	for deadline := time.Now().Add(shutdownTestTimeout); ; {
+		streamLifecycle.mu.Lock()
+		idle := streamLifecycle.active == 0 && streamLifecycle.closingStreams == 0
+		active, closing := streamLifecycle.active, streamLifecycle.closingStreams
+		streamLifecycle.mu.Unlock()
+		if idle {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Errorf("stream workers still running: active=%d closing=%d", active, closing)
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestPluginShutdownWaitsForActiveStreams(t *testing.T) {
 	resetPluginLifecycleForTest()
 	t.Cleanup(resetPluginLifecycleForTest)
@@ -164,6 +186,7 @@ func runPluginShutdownStreamTest(t *testing.T, late bool) {
 		case <-time.After(shutdownTestTimeout):
 			t.Errorf("stream worker did not close during test cleanup")
 		}
+		waitPluginStreamsIdle(t)
 		hostCall = previousHostCall
 	}()
 	waitExecute := func() {

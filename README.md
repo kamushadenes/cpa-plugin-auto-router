@@ -76,7 +76,9 @@ plugins:
 
 The alias is listed in `/v1/models`, and `RouteModel` claims it without calling Jev, so there is no classification and no session state. `primary` and `fallback` reach the host verbatim, so a thinking suffix such as `claude-opus-5-5(high)` belongs in the configured value.
 
-A refusal is `finish_reason: content_filter` for `chat-completions` (what the Anthropic `stop_reason: refusal` becomes in translation) and `status: incomplete` with `incomplete_details.reason: content_filter` for `responses`. Nothing else switches models: 429, 5xx, authentication errors and timeouts are returned as they arrive, and the alias path does not retry.
+A refusal is `finish_reason: content_filter` for OpenAI chat completions requests (what the Anthropic `stop_reason: refusal` becomes in translation) and `status: incomplete` with `incomplete_details.reason: content_filter` for OpenAI responses requests. Nothing else switches models: 429, 5xx, authentication errors and timeouts are returned as they arrive, and the alias path does not retry.
+
+Both guards read the entry protocol the host reports. The identifiers it sends are `openai` and `openai-response`; the names this plugin declares in `executor_input_formats`, `chat-completions` and `responses`, are accepted as aliases. Any other entry protocol, Claude and Gemini included, is left alone: the primary answer is returned as it arrives.
 
 On the non-streaming path the plugin calls `primary`, and on a refusal calls `fallback` once with the identical body. On the streaming path it buffers primary chunks until either the first visible answer output (answer text or a tool call, after which it flushes and streams through) or a terminal refusal with nothing emitted yet (it then closes the primary stream and streams `fallback` instead). Role-only deltas, empty deltas and reasoning deltas do not count as visible output, so a model that thinks at length before refusing still switches; the buffered reasoning is dropped and the client hears only the fallback answer. The buffer holds at most 1 MiB; past that the stream is flushed and runs unguarded. A refusal that arrives after visible output has been flushed cannot be un-sent, so it passes through and is logged as `refusal_after_output`.
 
@@ -89,7 +91,7 @@ Data egress caveat: the fallback provider in the example above is external (`api
 A primary model can refuse in plain text and still end with `finish_reason: stop` or `status: completed`. With `prose_refusal: true` on an alias, such an answer also counts as a refusal on non-streaming requests:
 
 1. The plugin reads only the visible answer text: the `message.content` string for `chat-completions`, and the `output_text` parts of `message` output items for `responses`. Reasoning, tool call arguments and tool results are never read. A response that carries a tool call (`tool_calls`, or a `function_call`, `custom_tool_call`, `web_search_call` or any other non-message output item) never switches, so no tool call is dropped or run twice.
-2. A phrase filter looks for first-person refusal wording such as "I can't help with", "I'm unable to assist", "I must decline", "against my guidelines" or "content policy". Without a match, Jev is not called and the answer passes through.
+2. A phrase filter looks for first-person refusal wording in English ("I can't help with", "I'm unable to assist", "I won't be creating", "I'm not comfortable producing", "I must decline", "against my guidelines", "content policy") and in Portuguese ("não posso ajudar", "não vou gerar", "me recuso", "contra minhas diretrizes", "política de conteúdo"), with or without accents. Verbs that report a limit rather than a refusal are excluded, so "I can't access the file" and "não posso confirmar isso sem os logs" do not match. Without a match, Jev is not called and the answer passes through.
 3. On a match, the plugin asks Jev whether the assistant itself refuses the task on safety, ethics or content-policy grounds. It uses the router's own `jev_base_url`, `jev_endpoint_path`, `jev_model`, `jev_api_key_env` and `jev_timeout_ms`. Jev is told the text is data, never instructions. Quoting a refusal, reporting missing evidence, reporting a technical limit (no access, a failed tool) and declining because the operator's stated scope excludes the task all count as not refused.
 4. Only a Jev probability of at least `0.8` switches. A lower probability, a timeout, a non-200 status, or a missing or malformed answer returns the primary response byte for byte; a Jev failure also logs `prose_refusal_unconfirmed`.
 
@@ -98,6 +100,18 @@ A confirmed prose refusal calls `fallback` once with the identical request body,
 Streaming requests keep the structured-only guard described above, even with `prose_refusal: true`. A consumer that wants prose refusal protection must send `stream: false` for the alias.
 
 Jev egress: on a phrase match, up to `snippet_chars` (default 4000) characters of the primary's visible answer go to the configured Jev endpoint, after secret redaction and with code blocks replaced by one-line descriptions. The request, system prompt and conversation history are not sent to Jev. The default `jev_base_url`, `https://openrouter.ai`, is an external service.
+
+### Checking a build before it ships
+
+`make smoke` loads the built `.so` through the plugin ABI with a synthetic host: `host.model.execute` returns a canned completion in the translator's own shape, the request carries the entry protocol identifier a real host sends, and Jev is a local fake, so no provider and no real Jev endpoint is contacted and no key is needed. It prints the executed models, the `X-Auto-Router` header, whether the primary or the fallback answered, what Jev was shown, and the plugin's log lines.
+
+```bash
+make smoke
+python3 scripts/plugin_smoke.py --help              # cases, formats, Jev options
+python3 scripts/plugin_smoke.py --case refusal-en --fake-jev-noul 0.3   # below the threshold
+```
+
+To check against the configured Jev service instead of the fake, export the key variable and pass `--jev-base-url` with the matching `--jev-endpoint-path`, `--jev-model` and `--jev-api-key-env`. The script never reads a key file and never prints the key: the plugin reads the variable itself.
 
 ## Difficulty raise from repeated tool failures
 
