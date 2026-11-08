@@ -1,0 +1,5 @@
+name: cliproxy-guarded
+kind: model-provider
+version: 0.1.0
+description: Local CLIProxyAPI guarded alias with streaming off
+author: kamushadenes
