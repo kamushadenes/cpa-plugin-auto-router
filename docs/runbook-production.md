@@ -81,7 +81,8 @@ Needs plugin `0.2.3` or later, deployed as above and reviewed. `prose_refusal` o
 #    jev_timeout_ms: there is no new endpoint or secret. On a refusal phrase match, up to
 #    snippet_chars characters of the redacted visible answer go to that Jev endpoint.
 # 2. Verify: switches log reason "prose-refusal"; Jev failures log "prose_refusal_unconfirmed"
-#    and keep the primary answer.
+#    and keep the primary answer. A plain refusal whose wording the filter does not list
+#    never reaches Jev, so it stays on the primary answer too.
 ssh root@10.23.23.12 'journalctl -u cliproxyapi --since "1 hour ago" --no-pager | grep -E "prose-refusal|prose_refusal_unconfirmed"'
 # Rollback: remove the key or set `prose_refusal: false` (hot-reload).
 ```

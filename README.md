@@ -95,6 +95,8 @@ A primary model can refuse in plain text and still end with `finish_reason: stop
 3. On a match, the plugin asks Jev whether the assistant itself refuses the task on safety, ethics or content-policy grounds. It uses the router's own `jev_base_url`, `jev_endpoint_path`, `jev_model`, `jev_api_key_env` and `jev_timeout_ms`. Jev is told the text is data, never instructions. Quoting a refusal, reporting missing evidence, reporting a technical limit (no access, a failed tool) and declining because the operator's stated scope excludes the task all count as not refused.
 4. Only a Jev probability of at least `0.8` switches. A lower probability, a timeout, a non-200 status, or a missing or malformed answer returns the primary response byte for byte; a Jev failure also logs `prose_refusal_unconfirmed`.
 
+The filter is a gate, not a detector: wording it does not list, in any language, never reaches Jev, so a plain refusal that phrases itself another way stays on the primary answer.
+
 A confirmed prose refusal calls `fallback` once with the identical request body, the same as a `content_filter` refusal, and the fallback answer is not checked again. Jev's answer only chooses which model answers the unchanged request: the system prompt and the operator's scope reach the fallback as they were, and nothing Jev returns grants a tool, a permission or an action.
 
 Streaming requests keep the structured-only guard described above, even with `prose_refusal: true`. A consumer that wants prose refusal protection must send `stream: false` for the alias.
