@@ -7,8 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
 
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/jev"
+	"github.com/kamushadenes/cpa-plugin-auto-router/internal/snippet"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/tidwall/gjson"
@@ -18,10 +21,13 @@ import (
 // Primary, and are re-run on Fallback only when Primary refuses on safety
 // grounds. Primary and Fallback reach the host verbatim, so a thinking suffix
 // such as "claude-opus-5-5(high)" belongs in the configured value.
+// ProseRefusal also treats a Jev-confirmed prose refusal as a refusal, on the
+// non-streaming path only.
 type refusalFallbackAlias struct {
-	Alias    string `yaml:"alias"`
-	Primary  string `yaml:"primary"`
-	Fallback string `yaml:"fallback"`
+	Alias        string `yaml:"alias"`
+	Primary      string `yaml:"primary"`
+	Fallback     string `yaml:"fallback"`
+	ProseRefusal bool   `yaml:"prose_refusal"`
 }
 
 const (
@@ -34,10 +40,66 @@ const (
 	responsesIncompleteType = "response.incomplete"
 )
 
+// requestFormat maps the entry protocol the host reports in SourceFormat to the
+// response shape the refusal detectors read. The host sends a translator
+// identifier ("openai", "openai-response"); the names this plugin declares in
+// executor_input_formats ("chat-completions", "responses") are aliases the host
+// resolves to the same two formats in normalizeExecutorFormatName
+// (internal/pluginhost/adapters.go), and it never maps the inbound value back.
+// Any other entry protocol, Claude and Gemini included, returns "" and no
+// detector claims the response.
+func requestFormat(sourceFormat string) string {
+	switch strings.ToLower(strings.TrimSpace(sourceFormat)) {
+	case "openai", "chat-completions", "chat_completions", "openai-chat-completions", "openai_chat_completions":
+		return formatChatCompletions
+	case "openai-response", "responses", "openai-responses", "openai_responses":
+		return formatResponses
+	}
+	return ""
+}
+
 // ponytail: the guard holds at most 1 MiB of the primary stream, which covers a
 // long reasoning prelude before the first visible token. Past that ceiling it
 // flushes and streams through unguarded.
 const refusalGuardMaxBytes = 1 << 20
+
+// refusalProseReason logs a switch on a Jev-confirmed prose refusal;
+// proseRefusalUnconfirmedLog logs a prose candidate kept because Jev failed.
+const (
+	refusalProseReason         = "prose-refusal"
+	proseRefusalUnconfirmedLog = "prose_refusal_unconfirmed"
+)
+
+// proseRefusalThreshold is the Jev probability a prose refusal needs before the
+// alias switches. A switch sends the whole conversation to the fallback
+// provider, so an uncertain answer keeps the primary response.
+const proseRefusalThreshold = 0.8
+
+// proseRefusalCue matches first-person refusal phrasing in English and in
+// Brazilian Portuguese (the wiki consumer writes in PT-BR). The verb list is
+// deliberately narrow: "I can't access the file" and "I cannot find evidence"
+// are not refusals and must not reach Jev. It only decides whether Jev is
+// asked; Jev decides whether the answer is a refusal.
+var proseRefusalCue = regexp.MustCompile(`(?i)` +
+	// "I can't help with that", "I won't be creating that", "I do not provide that"
+	`\bi (?:cannot|can't|can not|won't|will not|don't|do not|must not)(?: be)?(?: able to)? ` + proseRefusalVerbs + `\b` +
+	// "I'm unable to provide that", "I am not comfortable producing that"
+	`|\bi(?:'m| am) (?:unable to|not able to|not going to|not comfortable|not willing to|not permitted to|not allowed to) ` + proseRefusalVerbs + `\b` +
+	`|\bi(?: must| have to| need to| will|'m going to| am going to) (?:decline|refuse)\b` +
+	`|\bagainst my (?:guidelines|principles|values)\b|\b(?:content|usage) polic(?:y|ies)\b` +
+	// Portuguese: accents are optional because models drop them in haste.
+	`|\bn[ãa]o (?:posso|poderei|vou poder|consigo|serei capaz de|vou|pretendo|estou (?:disposto|disposta) a) ` + proseRefusalVerbsPT + `\b` +
+	`|\b(?:me recuso|devo recusar|preciso recusar|tenho que recusar)\b` +
+	`|\bpol[íi]ticas? de (?:conte[úu]do|uso)\b` +
+	`|\b(?:contra|violam?) (?:as |os )?(?:minhas|meus) (?:diretrizes|pol[íi]ticas|princ[íi]pios|valores)\b`)
+
+const (
+	proseRefusalVerbs = `(?:help(?:ing)?|assist(?:ing)?|provid(?:e|ing)|creat(?:e|ing)|writ(?:e|ing)|generat(?:e|ing)|` +
+		`produc(?:e|ing)|compl(?:y|ying)|complet(?:e|ing)|fulfill(?:ing)?|engag(?:e|ing)|support(?:ing)?|` +
+		`continu(?:e|ing)|proceed(?:ing)?|do that|do this|go along with)`
+	proseRefusalVerbsPT = `(?:ajudar|auxiliar|fornecer|criar|escrever|gerar|produzir|atender|colaborar|cumprir|` +
+		`continuar|prosseguir|seguir|fazer isso|fazer esse|fazer essa)`
+)
 
 // normalizeRefusalFallback trims the configured aliases and drops incomplete
 // entries, so a half-written entry disables that alias instead of claiming a
@@ -98,7 +160,14 @@ func executeRefusal(req rpcExecutorRequest, alias refusalFallbackAlias) ([]byte,
 	}
 	model := alias.Primary
 	var failed []string
-	if refusedResponse(req.SourceFormat, response.Body) {
+	reason := ""
+	format := requestFormat(req.SourceFormat)
+	if refusedResponse(format, response.Body) {
+		reason = refusalFallbackReason
+	} else if alias.ProseRefusal && proseRefused(req, alias, format, response.Body) {
+		reason = refusalProseReason
+	}
+	if reason != "" {
 		fallback, fallbackErr := executeRefusalModel(req, alias.Fallback)
 		if fallbackErr != nil {
 			return errorEnvelope("executor_error", fallbackErr.Error()), nil
@@ -106,7 +175,7 @@ func executeRefusal(req rpcExecutorRequest, alias refusalFallbackAlias) ([]byte,
 		response = fallback
 		model = alias.Fallback
 		failed = []string{alias.Primary}
-		logRefusalFallback(req, alias, refusalFallbackReason, false)
+		logRefusalFallback(req, alias, reason, false)
 	}
 	headers := cloneHeaders(response.Headers)
 	if headers == nil {
@@ -117,6 +186,61 @@ func executeRefusal(req rpcExecutorRequest, alias refusalFallbackAlias) ([]byte,
 	}
 	headers.Set("X-Auto-Router", refusalRouterHeader(model, failed))
 	return okEnvelope(pluginapi.ExecutorResponse{Payload: response.Body, Headers: headers})
+}
+
+// proseRefused reports a Jev-confirmed prose refusal. Jev is asked only when
+// the visible answer carries refusal phrasing, and any Jev failure keeps the
+// primary answer. Jev only picks which model answers the unchanged request.
+func proseRefused(req rpcExecutorRequest, alias refusalFallbackAlias, format string, body []byte) bool {
+	text := visibleAnswerText(format, body)
+	if !proseRefusalCue.MatchString(strings.ReplaceAll(text, "’", "'")) {
+		return false
+	}
+	cfg := loadedConfig()
+	probability, err := jev.Refusal(context.Background(), jevConfig(cfg), snippet.Prepare(text, cfg.SnippetChars))
+	if err != nil {
+		logRefusalFallback(req, alias, proseRefusalUnconfirmedLog, false)
+		return false
+	}
+	return probability >= proseRefusalThreshold
+}
+
+// visibleAnswerText returns the assistant answer text of a non-streaming body
+// in the host's exit format: message.content strings for chat-completions, and
+// output_text parts of message items for responses (see the translator shapes
+// below). Reasoning and tool arguments are never returned. A response with a
+// tool call yields "": the primary acted, and a switch would drop that call.
+func visibleAnswerText(format string, body []byte) string {
+	root := gjson.ParseBytes(body)
+	var parts []string
+	switch format {
+	case formatChatCompletions:
+		for _, choice := range root.Get("choices").Array() {
+			message := choice.Get("message")
+			if len(message.Get("tool_calls").Array()) > 0 {
+				return ""
+			}
+			if content := message.Get("content"); content.Type == gjson.String {
+				parts = append(parts, content.String())
+			}
+		}
+	case formatResponses:
+		for _, item := range root.Get("output").Array() {
+			switch item.Get("type").String() {
+			case "reasoning":
+			case "message":
+				for _, part := range item.Get("content").Array() {
+					if part.Get("type").String() == "output_text" {
+						parts = append(parts, part.Get("text").String())
+					}
+				}
+			default:
+				// function_call, custom_tool_call, web_search_call and the other tool items.
+				return ""
+			}
+		}
+	}
+	return strings.Join(parts, "\n")
 }
 
 func executeRefusalModel(req rpcExecutorRequest, model string) (pluginapi.HostModelExecutionResponse, error) {
@@ -200,6 +324,7 @@ func startRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlia
 	if err != nil {
 		return refusalGuardedStream{}, err
 	}
+	format := requestFormat(req.SourceFormat)
 	payload, done := ready.firstPayload, ready.done
 	ready.firstPayload = nil
 	buffered := make([][]byte, 0, 8)
@@ -209,10 +334,10 @@ func startRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlia
 		if len(payload) > 0 {
 			buffered = append(buffered, payload)
 			bufferedBytes += len(payload)
-			if streamChunkHasVisibleOutput(req.SourceFormat, payload) {
+			if streamChunkHasVisibleOutput(format, payload) {
 				break
 			}
-			if streamChunkRefused(req.SourceFormat, payload) {
+			if streamChunkRefused(format, payload) {
 				refused = true
 				break
 			}
@@ -245,12 +370,13 @@ func startRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlia
 
 func pumpRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlias, start refusalGuardedStream, pluginStreamID string) error {
 	var observe func([]byte)
+	format := requestFormat(req.SourceFormat)
 	if !start.switched {
 		logged := false
 		observe = func(payload []byte) {
 			// The primary stream is already reaching the client, so a refusal
 			// that arrives now cannot be un-sent: report it, never switch.
-			if logged || !streamChunkRefused(req.SourceFormat, payload) {
+			if logged || !streamChunkRefused(format, payload) {
 				return
 			}
 			logged = true

@@ -72,19 +72,19 @@ func buildState(headers http.Header, items []gjson.Result, max int, estTokens in
 	state := State{Session: Session{Harness: harness(headers), Depth: depth(len(turns), estTokens), RecentTools: recentTools(items)}}
 	switch {
 	case latest.text != "":
-		state.Request = prepare(latest.text, max)
+		state.Request = Prepare(latest.text, max)
 	case latest.images > 0:
 		state.Request = fmt.Sprintf("(the user sent %d image(s) and no text)", latest.images)
 	}
 	for _, earlier := range turns[max0(len(turns)-3):max0(len(turns)-1)] {
-		if text := prepare(earlier.text, recentTurnChars); text != "" {
+		if text := Prepare(earlier.text, recentTurnChars); text != "" {
 			state.RecentUserTurns = append(state.RecentUserTurns, text)
 		}
 	}
 	// A short "yes, go ahead" inherits the work it approves.
 	if len(strings.Fields(latest.text)) < shortRequestWords {
 		if text := lastAssistantText(items); text != "" {
-			state.LastAssistantMessage = prepare(text, assistantChars)
+			state.LastAssistantMessage = Prepare(text, assistantChars)
 		}
 	}
 	return state
@@ -97,8 +97,8 @@ func max0(n int) int {
 	return n
 }
 
-// prepare scrubs secrets before describing code and clipping, as jev-router does.
-func prepare(text string, max int) string {
+// Prepare scrubs secrets before describing code and clipping, as jev-router does.
+func Prepare(text string, max int) string {
 	return clip(describeCode(Scrub(text)), max)
 }
 

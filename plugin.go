@@ -224,7 +224,7 @@ func pluginRegistration() registration {
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata: pluginapi.Metadata{
 			Name:             "auto-router",
-			Version:          "0.2.2",
+			Version:          "0.2.3",
 			Author:           "kamushadenes",
 			GitHubRepository: "https://github.com/kamushadenes/cpa-plugin-auto-router",
 			ConfigFields: []pluginapi.ConfigField{
@@ -237,7 +237,7 @@ func pluginRegistration() registration {
 				{Name: "table_path", Type: pluginapi.ConfigFieldTypeString, Description: "Path to the local benchmark table."},
 				{Name: "snippet_chars", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum user snippet size."},
 				{Name: "jev_timeout_ms", Type: pluginapi.ConfigFieldTypeInteger, Description: "Jev request timeout in milliseconds."},
-				{Name: "refusal_fallback", Type: pluginapi.ConfigFieldTypeString, Description: "Aliases that retry a safety refusal on a fallback model."},
+				{Name: "refusal_fallback", Type: pluginapi.ConfigFieldTypeString, Description: "Aliases that retry a safety refusal on a fallback model; per-alias prose_refusal adds Jev-confirmed prose refusals on non-streaming requests."},
 			},
 		},
 		Capabilities: registrationCapability{
@@ -443,6 +443,17 @@ func decideForWithMeta(req pluginapi.ModelRouteRequest, prev decide.State, hasPr
 	return decision, meta, err
 }
 
+// jevConfig is the one Jev endpoint, key, model and timeout every Jev call uses.
+func jevConfig(cfg pluginConfig) jev.Config {
+	return jev.Config{
+		BaseURL:      cfg.JevBaseURL,
+		EndpointPath: cfg.JevEndpointPath,
+		Model:        cfg.JevModel,
+		APIKey:       os.Getenv(cfg.JevAPIKeyEnv),
+		Timeout:      time.Duration(cfg.JevTimeoutMS) * time.Millisecond,
+	}
+}
+
 func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, hasPrev bool) (decide.Decision, routeMeta, routeContext, error) {
 	cfg := loadedConfig()
 	tb, err := loadedTable()
@@ -462,15 +473,8 @@ func decideForWithContext(req pluginapi.ModelRouteRequest, prev decide.State, ha
 		if hasPrev {
 			difficulty = prev.Difficulty
 		}
-		jevCfg := jev.Config{
-			BaseURL:      cfg.JevBaseURL,
-			EndpointPath: cfg.JevEndpointPath,
-			Model:        cfg.JevModel,
-			APIKey:       os.Getenv(cfg.JevAPIKeyEnv),
-			Timeout:      time.Duration(cfg.JevTimeoutMS) * time.Millisecond,
-		}
 		state := snippet.BuildState(req.Headers, req.Body, cfg.SnippetChars, estTokens)
-		jevResult, jevErr := jev.Decide(context.Background(), jevCfg, state)
+		jevResult, jevErr := jev.Decide(context.Background(), jevConfig(cfg), state)
 		if jevErr == nil {
 			jevOK = true
 			meta.factors = jevResult.Factors

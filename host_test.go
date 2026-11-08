@@ -152,6 +152,10 @@ func installFakeHost(t *testing.T, fake *fakeHostCalls) {
 	previous := hostCall
 	hostCall = fake.call
 	t.Cleanup(func() { hostCall = previous })
+	// Registered last, so it runs first: a stream worker still unwinding would
+	// otherwise read hostCall and the stream lifecycle after the test restored
+	// one and a later test replaced the other.
+	t.Cleanup(func() { waitPluginStreamsIdle(t) })
 }
 
 func configureFailoverHostTest(t *testing.T) {
