@@ -98,9 +98,11 @@ var proseRefusalCue = regexp.MustCompile(`(?i)` +
 
 // refusalErrorCue matches a safety refusal the provider delivers as an HTTP
 // error instead of a refused 2xx body, e.g. Claude's "claude refusal (cyber):
-// Cyber safeguards flagged this message". A primary error carrying one of these
-// markers runs the fallback; any other error is returned unchanged.
-var refusalErrorCue = regexp.MustCompile(`(?i)refusal \(cyber\)|cyber safeguards|content_policy|content_filter`)
+// Cyber safeguards flagged this message". Only explicit refusal markers count,
+// so an ordinary 400 that echoes a parameter name such as content_filter never
+// sends the request to the fallback provider. Any other error is returned
+// unchanged.
+var refusalErrorCue = regexp.MustCompile(`(?i)refusal \(cyber\)|cyber safeguards|content_policy_violation`)
 
 const (
 	proseRefusalVerbs = `(?:help(?:ing)?|assist(?:ing)?|provid(?:e|ing)|creat(?:e|ing)|writ(?:e|ing)|generat(?:e|ing)|` +

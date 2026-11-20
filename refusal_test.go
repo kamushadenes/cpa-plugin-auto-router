@@ -288,59 +288,121 @@ func TestRefusalFallbackNonStreamSwitchesOnRefusalError(t *testing.T) {
 	}
 }
 
-func TestRefusalFallbackNonStreamServerErrorWithoutMarkerDoesNotSwitch(t *testing.T) {
+func TestRefusalFallbackNonStreamErrorWithoutMarkerDoesNotSwitch(t *testing.T) {
+	tests := []struct {
+		name     string
+		response pluginapi.HostModelExecutionResponse
+	}{
+		{"server error", pluginapi.HostModelExecutionResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       []byte(`{"error":{"type":"api_error","message":"Overloaded"}}`),
+		}},
+		{"bad request echoing content_filter", pluginapi.HostModelExecutionResponse{
+			StatusCode: http.StatusBadRequest,
+			Body:       []byte(`{"error":{"type":"invalid_request_error","message":"invalid_request_error: unknown parameter content_filter"}}`),
+		}},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			configureRefusalTest(t)
+			fake := newFakeHostCalls()
+			installFakeHost(t, fake)
+			fake.executeResponses[testPrimary] = testCase.response
+
+			raw, err := execute(refusalExecutorRequest(t, testAlias, ""))
+			if err != nil {
+				t.Fatal(err)
+			}
+			env, _ := decodeHostEnvelope(t, raw)
+			if env.OK {
+				t.Fatal("primary error produced an ok envelope")
+			}
+			if len(fake.executeModels) != 1 || fake.executeModels[0] != testPrimary {
+				t.Fatalf("executed models = %#v", fake.executeModels)
+			}
+		})
+	}
+}
+
+func TestRefusalFallbackStreamSwitchesOnRefusalError(t *testing.T) {
+	tests := []struct {
+		name    string
+		prepare func(*fakeHostCalls)
+	}{
+		{"host call error", func(fake *fakeHostCalls) {
+			fake.streamErrors[testPrimary] = errors.New(cyberRefusalError)
+		}},
+		{"error status body", func(fake *fakeHostCalls) {
+			fake.streamResponses[testPrimary] = pluginapi.HostModelStreamResponse{StatusCode: http.StatusBadRequest, StreamID: "stream-primary"}
+			fake.streamReads["stream-primary"] = []fakeStreamRead{
+				{response: pluginapi.HostModelStreamReadResponse{Payload: []byte(`{"error":{"type":"invalid_request_error","message":"claude refusal (cyber): Cyber safeguards flagged this message."}}`), Done: true}},
+			}
+		}},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			configureRefusalTest(t)
+			fake := newFakeHostCalls()
+			installFakeHost(t, fake)
+			testCase.prepare(fake)
+			fake.streamResponses[testFallback] = pluginapi.HostModelStreamResponse{StatusCode: http.StatusOK, StreamID: "stream-fallback"}
+			fake.streamReads["stream-fallback"] = []fakeStreamRead{
+				{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"uncensored answer\"},\"finish_reason\":null}]}\n\n")}},
+				{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: [DONE]\n\n"), Done: true}},
+			}
+
+			raw, err := executeStream(refusalExecutorRequest(t, testAlias, "plugin-stream-refusal-error"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := streamHeaderValue(t, raw, "X-Auto-Router"); got != testFallback+`;refusal-fallback;failed_from=["`+testPrimary+`"]` {
+				t.Fatalf("X-Auto-Router = %q", got)
+			}
+			if closeRequest := waitPluginClose(t, fake); closeRequest.Error != "" {
+				t.Fatalf("stream closed with %q", closeRequest.Error)
+			}
+			fake.mu.Lock()
+			defer fake.mu.Unlock()
+			if len(fake.emits) != 2 || !strings.Contains(fake.emits[0], "uncensored answer") {
+				t.Fatalf("emitted chunks = %#v", fake.emits)
+			}
+			if len(fake.streamModels) != 2 || fake.streamModels[0] != testPrimary || fake.streamModels[1] != testFallback {
+				t.Fatalf("stream models = %#v", fake.streamModels)
+			}
+			if fields := refusalLogFields(t, fake, refusalErrorReason); fields["stream"] != true {
+				t.Fatalf("log fields = %#v", fields)
+			}
+		})
+	}
+}
+
+func TestRefusalFallbackStreamOpenErrorWithoutMarkerDoesNotSwitch(t *testing.T) {
 	configureRefusalTest(t)
 	fake := newFakeHostCalls()
 	installFakeHost(t, fake)
-	fake.executeResponses[testPrimary] = pluginapi.HostModelExecutionResponse{
-		StatusCode: http.StatusInternalServerError,
-		Body:       []byte(`{"error":{"type":"api_error","message":"Overloaded"}}`),
-	}
+	fake.streamErrors[testPrimary] = errors.New("host_call_failed: invalid_request_error: unknown parameter content_filter")
 
-	raw, err := execute(refusalExecutorRequest(t, testAlias, ""))
+	raw, err := executeStream(refusalExecutorRequest(t, testAlias, "plugin-stream-open-error"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	env, _ := decodeHostEnvelope(t, raw)
 	if env.OK {
-		t.Fatal("server error produced an ok envelope")
+		t.Fatal("stream open error produced an ok envelope")
 	}
-	if len(fake.executeModels) != 1 || fake.executeModels[0] != testPrimary {
-		t.Fatalf("executed models = %#v", fake.executeModels)
+	if !strings.Contains(env.Error.Message, "unknown parameter content_filter") {
+		t.Fatalf("envelope error = %#v", env.Error)
 	}
-}
-
-func TestRefusalFallbackStreamSwitchesOnRefusalError(t *testing.T) {
-	configureRefusalTest(t)
-	fake := newFakeHostCalls()
-	installFakeHost(t, fake)
-	fake.streamErrors[testPrimary] = errors.New(cyberRefusalError)
-	fake.streamResponses[testFallback] = pluginapi.HostModelStreamResponse{StatusCode: http.StatusOK, StreamID: "stream-fallback"}
-	fake.streamReads["stream-fallback"] = []fakeStreamRead{
-		{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"uncensored answer\"},\"finish_reason\":null}]}\n\n")}},
-		{response: pluginapi.HostModelStreamReadResponse{Payload: []byte("data: [DONE]\n\n"), Done: true}},
-	}
-
-	raw, err := executeStream(refusalExecutorRequest(t, testAlias, "plugin-stream-refusal-error"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := streamHeaderValue(t, raw, "X-Auto-Router"); got != testFallback+`;refusal-fallback;failed_from=["`+testPrimary+`"]` {
-		t.Fatalf("X-Auto-Router = %q", got)
-	}
-	if closeRequest := waitPluginClose(t, fake); closeRequest.Error != "" {
+	if closeRequest := waitPluginClose(t, fake); !strings.Contains(closeRequest.Error, "unknown parameter content_filter") {
 		t.Fatalf("stream closed with %q", closeRequest.Error)
 	}
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
-	if len(fake.emits) != 2 || !strings.Contains(fake.emits[0], "uncensored answer") {
-		t.Fatalf("emitted chunks = %#v", fake.emits)
-	}
-	if len(fake.streamModels) != 2 || fake.streamModels[0] != testPrimary || fake.streamModels[1] != testFallback {
+	if len(fake.streamModels) != 1 || fake.streamModels[0] != testPrimary {
 		t.Fatalf("stream models = %#v", fake.streamModels)
 	}
-	if fields := refusalLogFields(t, fake, refusalErrorReason); fields["stream"] != true {
-		t.Fatalf("log fields = %#v", fields)
+	if len(fake.emits) != 0 {
+		t.Fatalf("emitted chunks = %#v", fake.emits)
 	}
 }
 

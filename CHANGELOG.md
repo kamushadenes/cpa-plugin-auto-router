@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 - Refusal-guarded aliases now switch to the fallback when the primary returns its safety refusal as an error.
+- Streaming requests that fail to open now report the provider's error body.
 
 ## [0.2.3] - 2026-11-07
 
