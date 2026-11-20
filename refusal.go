@@ -64,9 +64,12 @@ func requestFormat(sourceFormat string) string {
 const refusalGuardMaxBytes = 1 << 20
 
 // refusalProseReason logs a switch on a Jev-confirmed prose refusal;
-// proseRefusalUnconfirmedLog logs a prose candidate kept because Jev failed.
+// refusalErrorReason logs a switch on a primary error carrying a refusal
+// marker; proseRefusalUnconfirmedLog logs a prose candidate kept because Jev
+// failed.
 const (
 	refusalProseReason         = "prose-refusal"
+	refusalErrorReason         = "refusal-error"
 	proseRefusalUnconfirmedLog = "prose_refusal_unconfirmed"
 )
 
@@ -92,6 +95,12 @@ var proseRefusalCue = regexp.MustCompile(`(?i)` +
 	`|\b(?:me recuso|devo recusar|preciso recusar|tenho que recusar)\b` +
 	`|\bpol[íi]ticas? de (?:conte[úu]do|uso)\b` +
 	`|\b(?:contra|violam?) (?:as |os )?(?:minhas|meus) (?:diretrizes|pol[íi]ticas|princ[íi]pios|valores)\b`)
+
+// refusalErrorCue matches a safety refusal the provider delivers as an HTTP
+// error instead of a refused 2xx body, e.g. Claude's "claude refusal (cyber):
+// Cyber safeguards flagged this message". A primary error carrying one of these
+// markers runs the fallback; any other error is returned unchanged.
+var refusalErrorCue = regexp.MustCompile(`(?i)refusal \(cyber\)|cyber safeguards|content_policy|content_filter`)
 
 const (
 	proseRefusalVerbs = `(?:help(?:ing)?|assist(?:ing)?|provid(?:e|ing)|creat(?:e|ing)|writ(?:e|ing)|generat(?:e|ing)|` +
@@ -151,18 +160,21 @@ func logRefusalFallback(req rpcExecutorRequest, alias refusalFallbackAlias, reas
 }
 
 // executeRefusal runs a non-streaming alias request on the primary model and
-// re-runs the untouched body on the fallback model when the primary refuses.
-// Every other outcome, host errors included, is returned as-is.
+// re-runs the untouched body on the fallback model when the primary refuses,
+// either in a 2xx body or as an error carrying a refusal marker. Every other
+// outcome, host errors included, is returned as-is.
 func executeRefusal(req rpcExecutorRequest, alias refusalFallbackAlias) ([]byte, error) {
 	response, err := executeRefusalModel(req, alias.Primary)
-	if err != nil {
+	if err != nil && !refusalErrorCue.MatchString(err.Error()) {
 		return errorEnvelope("executor_error", err.Error()), nil
 	}
 	model := alias.Primary
 	var failed []string
 	reason := ""
 	format := requestFormat(req.SourceFormat)
-	if refusedResponse(format, response.Body) {
+	if err != nil {
+		reason = refusalErrorReason
+	} else if refusedResponse(format, response.Body) {
 		reason = refusalFallbackReason
 	} else if alias.ProseRefusal && proseRefused(req, alias, format, response.Body) {
 		reason = refusalProseReason
@@ -271,13 +283,14 @@ func executeRefusalModel(req rpcExecutorRequest, model string) (pluginapi.HostMo
 }
 
 // refusalGuardedStream is the state handed to the stream pump once the guard
-// knows which model the client is going to hear.
+// knows which model the client is going to hear. reason is the logged switch
+// reason, empty when the primary answers.
 type refusalGuardedStream struct {
 	ready    hostStreamReady
 	buffered [][]byte
 	model    string
 	failed   []string
-	switched bool
+	reason   string
 }
 
 // executeRefusalStream serves a streaming alias request. The buffering phase
@@ -296,8 +309,8 @@ func executeRefusalStream(req rpcExecutorRequest, alias refusalFallbackAlias) ([
 		endPluginStream()
 		return errorEnvelope("executor_error", err.Error()), nil
 	}
-	if start.switched {
-		logRefusalFallback(req, alias, refusalFallbackReason, true)
+	if start.reason != "" {
+		logRefusalFallback(req, alias, start.reason, true)
 	}
 	go func(start refusalGuardedStream) {
 		defer endPluginStream()
@@ -322,7 +335,10 @@ func executeRefusalStream(req rpcExecutorRequest, alias refusalFallbackAlias) ([
 func startRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlias) (refusalGuardedStream, error) {
 	ready, err := openHostStream(context.Background(), req, alias.Primary, req.OriginalRequest)
 	if err != nil {
-		return refusalGuardedStream{}, err
+		if !refusalErrorCue.MatchString(err.Error()) {
+			return refusalGuardedStream{}, err
+		}
+		return openRefusalFallbackStream(req, alias, refusalErrorReason)
 	}
 	format := requestFormat(req.SourceFormat)
 	payload, done := ready.firstPayload, ready.done
@@ -356,22 +372,27 @@ func startRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlia
 		return refusalGuardedStream{ready: ready, buffered: buffered, model: alias.Primary}, nil
 	}
 	closeRegisteredPluginHostStream(ready.streamID)
+	return openRefusalFallbackStream(req, alias, refusalFallbackReason)
+}
+
+// openRefusalFallbackStream opens the fallback stream after the primary refused.
+func openRefusalFallbackStream(req rpcExecutorRequest, alias refusalFallbackAlias, reason string) (refusalGuardedStream, error) {
 	fallbackReady, err := openHostStream(context.Background(), req, alias.Fallback, req.OriginalRequest)
 	if err != nil {
 		return refusalGuardedStream{}, err
 	}
 	return refusalGuardedStream{
-		ready:    fallbackReady,
-		model:    alias.Fallback,
-		failed:   []string{alias.Primary},
-		switched: true,
+		ready:  fallbackReady,
+		model:  alias.Fallback,
+		failed: []string{alias.Primary},
+		reason: reason,
 	}, nil
 }
 
 func pumpRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlias, start refusalGuardedStream, pluginStreamID string) error {
 	var observe func([]byte)
 	format := requestFormat(req.SourceFormat)
-	if !start.switched {
+	if start.reason == "" {
 		logged := false
 		observe = func(payload []byte) {
 			// The primary stream is already reaching the client, so a refusal
