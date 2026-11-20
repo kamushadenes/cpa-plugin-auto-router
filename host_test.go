@@ -29,6 +29,7 @@ type fakeHostCalls struct {
 	executeResponses map[string]pluginapi.HostModelExecutionResponse
 	executeErrors    map[string]error
 	streamResponses  map[string]pluginapi.HostModelStreamResponse
+	streamErrors     map[string]error
 	streamReads      map[string][]fakeStreamRead
 
 	executeModels []string
@@ -46,6 +47,7 @@ func newFakeHostCalls() *fakeHostCalls {
 		executeResponses: map[string]pluginapi.HostModelExecutionResponse{},
 		executeErrors:    map[string]error{},
 		streamResponses:  map[string]pluginapi.HostModelStreamResponse{},
+		streamErrors:     map[string]error{},
 		streamReads:      map[string][]fakeStreamRead{},
 		pluginCloses:     make(chan rpcStreamCloseRequest, 8),
 	}
@@ -81,6 +83,9 @@ func (f *fakeHostCalls) call(method string, payload any) (json.RawMessage, error
 		model := stripThinkingSuffix(req.Model)
 		f.streamModels = append(f.streamModels, req.Model)
 		f.streamBodies = append(f.streamBodies, req.Body)
+		if err := f.streamErrors[model]; err != nil {
+			return nil, err
+		}
 		response, ok := f.streamResponses[model]
 		if !ok {
 			return nil, fmt.Errorf("no stream response for %s", model)

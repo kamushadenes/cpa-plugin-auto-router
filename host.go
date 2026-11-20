@@ -246,7 +246,11 @@ func executeStream(raw []byte) ([]byte, error) {
 		if lastErr == nil {
 			break
 		}
-		if !retryableHostFailure(0, lastErr) || attempt+1 == maxHostAttempts {
+		status := 0
+		if statusErr, ok := errors.AsType[*hostStreamStatusError](lastErr); ok {
+			status = statusErr.status
+		}
+		if !retryableHostFailure(status, lastErr) || attempt+1 == maxHostAttempts {
 			closePluginStream(pluginStreamID, lastErr.Error())
 			endPluginStream()
 			return errorEnvelope("executor_error", lastErr.Error()), nil
@@ -414,8 +418,9 @@ func openHostStream(ctx context.Context, req rpcExecutorRequest, model string, b
 		return hostStreamReady{}, err
 	}
 	if response.StatusCode >= http.StatusBadRequest {
+		body := drainHostStreamErrorBody(response.StreamID)
 		_ = closeHostModelStream(response.StreamID)
-		return hostStreamReady{}, fmt.Errorf("host model status %d", response.StatusCode)
+		return hostStreamReady{}, &hostStreamStatusError{status: response.StatusCode, body: body}
 	}
 	if strings.TrimSpace(response.StreamID) == "" {
 		return hostStreamReady{}, errors.New("host model stream has no stream id")
@@ -436,6 +441,43 @@ func openHostStream(ctx context.Context, req rpcExecutorRequest, model string, b
 			return hostStreamReady{streamID: response.StreamID, done: true}, nil
 		}
 	}
+}
+
+// hostStreamStatusError is an error-status stream open. It keeps the numeric
+// status so retry classification matches the non-streaming path, and its text
+// carries the body like the non-streaming status error.
+type hostStreamStatusError struct {
+	status int
+	body   []byte
+}
+
+func (e *hostStreamStatusError) Error() string {
+	return fmt.Sprintf("host model status %d: %s", e.status, e.body)
+}
+
+// hostStreamErrorBodyMaxBytes caps how much of an error-status stream body is
+// read into the open error.
+const hostStreamErrorBodyMaxBytes = 64 << 10
+
+// drainHostStreamErrorBody reads the body of an error-status host stream so the
+// open error carries it, as the non-streaming status error does. A read error
+// ends the body early.
+func drainHostStreamErrorBody(streamID string) []byte {
+	if strings.TrimSpace(streamID) == "" {
+		return nil
+	}
+	var body []byte
+	for len(body) < hostStreamErrorBodyMaxBytes {
+		payload, done, err := readHostStreamChunk(streamID)
+		if err != nil {
+			break
+		}
+		body = append(body, payload...)
+		if done {
+			break
+		}
+	}
+	return body
 }
 
 // readHostStreamChunk reads one chunk from a host model stream.
