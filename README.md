@@ -47,7 +47,7 @@ The plugin accepts these fields under `plugins.configs.auto-router`:
 - `table_path`: benchmark YAML path. The default points at the production plugin directory; set it explicitly for TEST.
 - `snippet_chars`: maximum characters of the latest human message sent to Jev. Default and cap: `4000`.
 - `jev_timeout_ms`: Jev request timeout. Default: `2000`.
-- `refusal_fallback`: optional list of refusal-guarded aliases. Absent or empty means the feature is off. Each entry needs `alias`, `primary` and `fallback`; an entry missing any of the three is ignored. Optional `prose_refusal: true` also switches on a Jev-confirmed plain-text refusal, for non-streaming requests only.
+- `refusal_fallback`: optional list of refusal-guarded aliases. Absent or empty means the feature is off. Each entry needs `alias`, `primary` and `fallback`; `fallback` is one model name or an ordered list of model names. An entry missing any of the three, or whose `fallback` holds no non-empty name, is ignored. Optional `prose_refusal: true` also switches on a Jev-confirmed plain-text refusal, for non-streaming requests only.
 
 ## Model failover
 
@@ -61,7 +61,7 @@ Every retry after a transport failure carries a notice appended to the request b
 
 ## Refusal fallback aliases
 
-`refusal_fallback` registers extra models that are not routed by Jev. A request for the alias runs on `primary`; only a safety refusal moves it to `fallback`:
+`refusal_fallback` registers extra models that are not routed by Jev. A request for the alias runs on `primary` and moves down the ordered `fallback` list only on the conditions below:
 
 ```yaml
 plugins:
@@ -70,21 +70,31 @@ plugins:
       refusal_fallback:
         - alias: claude-opus-5-5-guarded
           primary: claude-opus-5-5
-          fallback: abliterated-model-large-v2
+          fallback: [asteras/canopus, orcarouter/auto-cyber] # or one model: fallback: asteras/canopus
           prose_refusal: true # optional, non-streaming requests only
 ```
 
-The alias is listed in `/v1/models`, and `RouteModel` claims it without calling Jev, so there is no classification and no session state. `primary` and `fallback` reach the host verbatim, so a thinking suffix such as `claude-opus-5-5(high)` belongs in the configured value.
+The alias is listed in `/v1/models`, and `RouteModel` claims it without calling Jev, so there is no classification and no session state. `primary` and every `fallback` entry reach the host verbatim, so a thinking suffix such as `claude-opus-5-5(high)` belongs in the configured value. Fallback entries are trimmed; empty entries and repeats of the primary or of an earlier entry are dropped, so each model runs at most once per request.
 
-A refusal is `finish_reason: content_filter` for OpenAI chat completions requests (what the Anthropic `stop_reason: refusal` becomes in translation) and `status: incomplete` with `incomplete_details.reason: content_filter` for OpenAI responses requests. A primary error (an error status or a failed host call, including a failed stream open) also counts as a refusal when its text or body contains, case-insensitively, `refusal (cyber)`, `cyber safeguards` or `content_policy_violation`; Claude delivers its cyber refusal this way. Nothing else switches models: 429, 5xx, authentication errors, timeouts and other 400s without one of those markers are returned as they arrive, and the alias path does not retry.
+A refusal is `finish_reason: content_filter` for OpenAI chat completions requests (what the Anthropic `stop_reason: refusal` becomes in translation) and `status: incomplete` with `incomplete_details.reason: content_filter` for OpenAI responses requests. An error (an error status or a failed host call, including a failed stream open) also counts as a refusal when its text or body contains, case-insensitively, `refusal (cyber)`, `cyber safeguards` or `content_policy_violation`; Claude delivers its cyber refusal this way.
 
-Both guards read the entry protocol the host reports. The identifiers it sends are `openai` and `openai-response`; the names this plugin declares in `executor_input_formats`, `chat-completions` and `responses`, are accepted as aliases. Any other entry protocol, Claude and Gemini included, is left alone: the primary answer is returned as it arrives.
+Chain rules:
 
-On the non-streaming path the plugin calls `primary`, and on a refusal calls `fallback` once with the identical body. On the streaming path it buffers primary chunks until either the first visible answer output (answer text or a tool call, after which it flushes and streams through) or a terminal refusal with nothing emitted yet (it then closes the primary stream and streams `fallback` instead). Role-only deltas, empty deltas and reasoning deltas do not count as visible output, so a model that thinks at length before refusing still switches; the buffered reasoning is dropped and the client hears only the fallback answer. The buffer holds at most 1 MiB; past that the stream is flushed and runs unguarded. A refusal that arrives after visible output has been flushed cannot be un-sent, so it passes through and is logged as `refusal_after_output`.
+- The primary moves to the first fallback on a refusal, on a refusal-marked error, on a Jev-confirmed prose refusal when `prose_refusal: true`, or on an empty answer. Any other primary error (429, 5xx, authentication errors, timeouts, other 400s) is returned as it arrives, and the alias path does not retry.
+- A fallback that is not the last moves to the next one on the same conditions, and also on any error: an error status, a failed host call, or a failed stream open.
+- The last fallback's answer or error is returned as it arrives, without further checks.
+- An empty answer is a 2xx non-streaming answer with no visible text and no tool call, or a stream that ends before any visible output. It is logged as `empty-answer`.
+- Every model receives the identical original request body; no notice is added.
 
-`X-Auto-Router` is `claude-opus-5-5;refusal-guard` while the primary answers, and `abliterated-model-large-v2;refusal-fallback;failed_from=["claude-opus-5-5"]` after a switch. Each switch logs one JSON line with `alias`, `primary`, `fallback`, `reason` (`refusal-fallback`, `refusal-error` for a refusal delivered as an error, or `prose-refusal` for a prose refusal) and `stream`; request and response bodies are never logged.
+Tool-failure escalation: when the trailing tool results of a request are three or more explicit failures (the same signal and exclusions as [Difficulty raise from repeated tool failures](#difficulty-raise-from-repeated-tool-failures): structured markers only, authentication, permission, quota and billing failures excluded), the request skips the primary and earlier fallbacks and runs on the last fallback only. Its answer or error is returned as it arrives. No state is kept: once a later tool result succeeds the streak resets, and the next request starts at the primary again. With a single fallback, escalation sends the request to that fallback.
 
-Data egress caveat: the fallback provider in the example above is external (`api.abliteration.ai`). On a refusal the full request body, system prompt and conversation history are sent to that provider. Do not configure an external fallback for an alias that carries data which may not leave your own providers.
+Both guards read the entry protocol the host reports. The identifiers it sends are `openai` and `openai-response`; the names this plugin declares in `executor_input_formats`, `chat-completions` and `responses`, are accepted as aliases. Any other entry protocol, Claude and Gemini included, is left alone: no refusal or empty-answer check applies, so the primary answer is returned as it arrives. Tool-failure escalation still applies.
+
+On the streaming path the plugin buffers the chunks of each model except the last until either the first visible answer output (answer text or a tool call, after which it flushes and streams through) or a terminal refusal or end of stream with nothing emitted yet (it then closes that stream and opens the next model). Role-only deltas, empty deltas and reasoning deltas do not count as visible output, so a model that thinks at length before refusing still switches; the buffered reasoning is dropped and the client hears only the answering model. The buffer holds at most 1 MiB; past that the stream is flushed and runs unguarded. A refusal that arrives after visible output has been flushed cannot be un-sent, so it passes through and is logged as `refusal_after_output`.
+
+`X-Auto-Router` is `claude-opus-5-5;refusal-guard` while the primary answers. After switches it names the answering model and every model tried before it, in order: `orcarouter/auto-cyber;refusal-fallback;failed_from=["claude-opus-5-5","asteras/canopus"]`. A tool-failure escalation reads `orcarouter/auto-cyber;tool-error-escalation`. Each switch logs one JSON line with `alias`, `primary`, `from` (the model that failed), `fallback` (the model switched to), `reason` and `stream`. Reasons are `refusal-fallback`, `refusal-error` (a refusal delivered as an error), `prose-refusal`, `fallback-error`, `empty-answer` and `tool-error-escalation`. Request and response bodies are never logged.
+
+Data egress caveat: every fallback in the list can receive the request. On a switch or an escalation, the full request body, system prompt and conversation history are sent to that fallback's provider. Do not configure an external fallback for an alias that carries data which may not leave your own providers.
 
 ### Prose refusals (non-streaming only)
 
@@ -97,7 +107,7 @@ A primary model can refuse in plain text and still end with `finish_reason: stop
 
 The filter is a gate, not a detector: wording it does not list, in any language, never reaches Jev, so a plain refusal that phrases itself another way stays on the primary answer.
 
-A confirmed prose refusal calls `fallback` once with the identical request body, the same as a `content_filter` refusal, and the fallback answer is not checked again. Jev's answer only chooses which model answers the unchanged request: the system prompt and the operator's scope reach the fallback as they were, and nothing Jev returns grants a tool, a permission or an action.
+A confirmed prose refusal moves to the next model with the identical request body, the same as a `content_filter` refusal. The answer of a fallback that is not the last is checked the same way; the last fallback's answer is not checked. Jev's answer only chooses which model answers the unchanged request: the system prompt and the operator's scope reach the fallback as they were, and nothing Jev returns grants a tool, a permission or an action.
 
 Streaming requests keep the structured-only guard described above, even with `prose_refusal: true`. A consumer that wants prose refusal protection must send `stream: false` for the alias.
 

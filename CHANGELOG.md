@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-25
+
+### Added
+- Guarded alias `fallback` accepts an ordered list; refusals and fallback errors move down the list.
+- Guarded aliases switch to the next model when an answer is empty.
+- Guarded alias requests with three or more trailing tool failures run on the last fallback directly.
+- Guarded alias switch logs name the model that failed in a `from` field.
+
 ## [0.2.4] - 2026-11-20
 
 ### Fixed

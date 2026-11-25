@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
+	"gopkg.in/yaml.v3"
 )
 
 const (
@@ -628,14 +630,48 @@ func TestModelRegistrationIncludesConfiguredAliases(t *testing.T) {
 	}
 }
 
-func TestNormalizeRefusalFallbackDropsIncompleteEntries(t *testing.T) {
+func TestNormalizeRefusalFallback(t *testing.T) {
+	parse := func(t *testing.T, fallbackYAML string) []refusalFallbackAlias {
+		t.Helper()
+		var cfg pluginConfig
+		raw := "refusal_fallback:\n  - alias: a\n    primary: p\n    fallback: " + fallbackYAML + "\n"
+		if err := yaml.Unmarshal([]byte(raw), &cfg); err != nil {
+			t.Fatal(err)
+		}
+		return normalizeRefusalFallback(cfg.RefusalFallback)
+	}
+	tests := []struct {
+		name     string
+		fallback string
+		want     []string
+	}{
+		{"string keeps working", " f ", []string{"f"}},
+		{"list keeps order", "[f0, f1]", []string{"f0", "f1"}},
+		{"list trims, drops empties, primary and repeats", `[" f0 ", "", p, f0, f1]`, []string{"f0", "f1"}},
+		{"empty list disables the alias", "[]", nil},
+		{"blank string disables the alias", `" "`, nil},
+	}
+	for _, testCase := range tests {
+		t.Run(testCase.name, func(t *testing.T) {
+			entries := parse(t, testCase.fallback)
+			if testCase.want == nil {
+				if entries != nil {
+					t.Fatalf("normalized = %#v", entries)
+				}
+				return
+			}
+			if len(entries) != 1 || !slices.Equal(entries[0].Fallback, testCase.want) {
+				t.Fatalf("normalized = %#v", entries)
+			}
+		})
+	}
 	entries := normalizeRefusalFallback([]refusalFallbackAlias{
-		{Alias: "  spaced  ", Primary: " p ", Fallback: " f "},
-		{Alias: "no-primary", Fallback: "f"},
+		{Alias: "  spaced  ", Primary: " p ", Fallback: fallbackModels{" f "}},
+		{Alias: "no-primary", Fallback: fallbackModels{"f"}},
 		{Alias: "no-fallback", Primary: "p"},
-		{Alias: pluginIdentifier, Primary: "p", Fallback: "f"},
+		{Alias: pluginIdentifier, Primary: "p", Fallback: fallbackModels{"f"}},
 	})
-	if len(entries) != 1 || entries[0] != (refusalFallbackAlias{Alias: "spaced", Primary: "p", Fallback: "f"}) {
+	if len(entries) != 1 || entries[0].Alias != "spaced" || entries[0].Primary != "p" || !slices.Equal(entries[0].Fallback, []string{"f"}) {
 		t.Fatalf("normalized = %#v", entries)
 	}
 }

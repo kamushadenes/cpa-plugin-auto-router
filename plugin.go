@@ -224,7 +224,7 @@ func pluginRegistration() registration {
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata: pluginapi.Metadata{
 			Name:             "auto-router",
-			Version:          "0.2.4",
+			Version:          "0.3.0",
 			Author:           "kamushadenes",
 			GitHubRepository: "https://github.com/kamushadenes/cpa-plugin-auto-router",
 			ConfigFields: []pluginapi.ConfigField{
@@ -268,7 +268,7 @@ func modelRegistration() pluginapi.ModelRegistrationResponse {
 			ID:                         alias.Alias,
 			Object:                     "model",
 			OwnedBy:                    pluginIdentifier,
-			DisplayName:                alias.Primary + " (refusal fallback: " + alias.Fallback + ")",
+			DisplayName:                alias.Primary + " (refusal fallback: " + strings.Join(alias.Fallback, ", ") + ")",
 			SupportedGenerationMethods: []string{"chat"},
 			ContextLength:              1000000,
 			UserDefined:                true,
