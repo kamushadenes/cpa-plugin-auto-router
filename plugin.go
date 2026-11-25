@@ -44,6 +44,10 @@ type pluginConfig struct {
 	// RefusalFallback is opt-in: each entry registers an alias model that runs
 	// on a primary model and falls back only on a safety refusal.
 	RefusalFallback []refusalFallbackAlias `yaml:"refusal_fallback"`
+	// Prices (US$ per 1M tokens) win over the models.yaml cost for the
+	// dashboard's cost estimate; StatsDir holds one JSON file per day.
+	Prices   map[string]modelPrice `yaml:"prices"`
+	StatsDir string                `yaml:"stats_dir"`
 }
 
 type registration struct {
@@ -59,6 +63,8 @@ type registrationCapability struct {
 	ExecutorModelScope    string   `json:"executor_model_scope"`
 	ExecutorInputFormats  []string `json:"executor_input_formats"`
 	ExecutorOutputFormats []string `json:"executor_output_formats"`
+	UsagePlugin           bool     `json:"usage_plugin"`
+	ManagementAPI         bool     `json:"management_api"`
 }
 
 type rpcExecutorRequest struct {
@@ -116,6 +122,7 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 		if err := configure(request); err != nil {
 			return nil, err
 		}
+		startStats(loadedConfig().StatsDir)
 		return okEnvelope(pluginRegistration())
 	case pluginabi.MethodModelRegister, pluginabi.MethodModelStatic:
 		return okEnvelope(modelRegistration())
@@ -129,6 +136,12 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 		return executeStream(request)
 	case pluginabi.MethodExecutorCountTokens:
 		return okEnvelope(pluginapi.ExecutorResponse{Payload: []byte(`{"input_tokens":0}`)})
+	case pluginabi.MethodUsageHandle:
+		return handleUsage(request)
+	case pluginabi.MethodManagementRegister:
+		return okEnvelope(managementRegistration())
+	case pluginabi.MethodManagementHandle:
+		return handleManagement(request)
 	default:
 		return errorEnvelope("unknown_method", "unknown method: "+method), nil
 	}
@@ -145,6 +158,7 @@ func defaultPluginConfig() pluginConfig {
 		TablePath:           "/home/hermes/cliproxyapi/plugins/auto-router/models.yaml",
 		SnippetChars:        maxJevSnippetChars,
 		JevTimeoutMS:        2000,
+		StatsDir:            defaultStatsDir,
 	}
 }
 
@@ -188,6 +202,9 @@ func configure(raw []byte) error {
 	if cfg.JevTimeoutMS == 0 {
 		cfg.JevTimeoutMS = 2000
 	}
+	if cfg.StatsDir == "" {
+		cfg.StatsDir = defaultStatsDir
+	}
 	cfg.RefusalFallback = normalizeRefusalFallback(cfg.RefusalFallback)
 	watch, err := table.Watch(cfg.TablePath)
 	state.mu.Lock()
@@ -224,7 +241,7 @@ func pluginRegistration() registration {
 		SchemaVersion: pluginabi.SchemaVersion,
 		Metadata: pluginapi.Metadata{
 			Name:             "auto-router",
-			Version:          "0.3.0",
+			Version:          "0.4.0",
 			Author:           "kamushadenes",
 			GitHubRepository: "https://github.com/kamushadenes/cpa-plugin-auto-router",
 			ConfigFields: []pluginapi.ConfigField{
@@ -238,6 +255,8 @@ func pluginRegistration() registration {
 				{Name: "snippet_chars", Type: pluginapi.ConfigFieldTypeInteger, Description: "Maximum user snippet size."},
 				{Name: "jev_timeout_ms", Type: pluginapi.ConfigFieldTypeInteger, Description: "Jev request timeout in milliseconds."},
 				{Name: "refusal_fallback", Type: pluginapi.ConfigFieldTypeString, Description: "Aliases that retry a safety refusal on a fallback model; per-alias prose_refusal adds Jev-confirmed prose refusals on non-streaming requests."},
+				{Name: "prices", Type: pluginapi.ConfigFieldTypeString, Description: "Dashboard prices in US$ per 1M tokens by model ID (input, output, cache_read, subscription); wins over the table cost."},
+				{Name: "stats_dir", Type: pluginapi.ConfigFieldTypeString, Description: "Directory for the dashboard's daily stats files (default plugins/auto-router/stats)."},
 			},
 		},
 		Capabilities: registrationCapability{
@@ -247,6 +266,8 @@ func pluginRegistration() registration {
 			ExecutorModelScope:    string(pluginapi.ExecutorModelScopeStatic),
 			ExecutorInputFormats:  []string{"chat-completions", "responses"},
 			ExecutorOutputFormats: []string{"chat-completions", "responses"},
+			UsagePlugin:           true,
+			ManagementAPI:         true,
 		},
 	}
 }
@@ -562,6 +583,7 @@ func routeResponse(callbackID, sid string, decision decide.Decision, meta routeM
 		return nil, err
 	}
 	hostLog(callbackID, "info", string(payload), nil)
+	stats.recordDecision(time.Now(), decision.Model, decision.Tier, decision.Reason, meta.jevMillis, hashSession(sid))
 	return okEnvelope(pluginapi.ModelRouteResponse{Handled: true, TargetKind: pluginapi.ModelRouteTargetSelf, Reason: decision.Reason})
 }
 

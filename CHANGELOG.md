@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-25
+
+### Added
+- "Auto Router" screen in the proxy management UI with router, guarded, cost, quality and error charts.
+- Dashboard data covers 7, 30 or 90 days and survives restarts and plugin reloads.
+- Optional `prices` config sets dashboard cost per model, including cache-read and subscription.
+- Optional `stats_dir` config sets where the dashboard's daily files are stored.
+
 ## [0.3.0] - 2026-11-25
 
 ### Added

@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Auto Router</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0f1115; color: #e6e6e6; font-family: Inter, system-ui, sans-serif; }
+  #app { padding: 18px; }
+  a { color: #9bb7ff; text-decoration: none; }
+  h2 { font-size: 1.5rem; font-weight: 600; margin: 0 0 4px; }
+  .sub { color: #9aa; font-size: 13px; margin-bottom: 12px; }
+  .bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; }
+  .bar button, form button { background: #171a21; color: #e6e6e6; border: 1px solid #262a33; border-radius: 6px; padding: 4px 10px; font: inherit; cursor: pointer; }
+  .bar button.on { border-color: #9bb7ff; color: #9bb7ff; }
+  .panel { background: #171a21; border: 1px solid #262a33; border-radius: 8px; padding: 14px; min-width: 0; }
+  .ptitle { font-size: 13px; color: #9aa; margin-bottom: 8px; }
+  .note { font-size: 11px; color: #778; margin-top: 6px; }
+  .empty { font-size: 13px; color: #778; padding: 18px 0; text-align: center; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .kpi { flex: 1; min-width: 150px; }
+  .kpi .big { font-size: 24px; font-weight: 600; }
+  .kpi .small { font-size: 12px; color: #9aa; }
+  .grid { display: grid; gap: 10px; margin-bottom: 10px; }
+  .sec { margin: 22px 0 6px; }
+  .sec > .t { font-size: 18px; font-weight: 600; }
+  .sec > .s { font-size: 12px; color: #9aa; margin-bottom: 10px; }
+  .leg { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; margin-top: 6px; color: #ccc; }
+  .leg i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; }
+  .hb { display: flex; align-items: center; gap: 8px; font-size: 13px; margin: 5px 0; }
+  .hb .k { width: 120px; flex: none; text-align: right; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .hb .v { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; }
+  .hb .b { height: 14px; border-radius: 2px; flex: none; min-width: 2px; }
+  .flow { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .flow .panel { text-align: center; min-width: 140px; }
+  .flow .small { font-size: 12px; color: #9aa; }
+  .arrow { flex: 1; text-align: center; font-size: 12px; color: #ccc; }
+  .arrow div { height: 2px; background: #555; margin-top: 4px; }
+  .alias { font-size: 13px; margin-bottom: 8px; }
+  .gap { height: 10px; }
+  form { display: flex; gap: 8px; align-items: center; margin: 20px 0; }
+  input { background: #0f1115; color: #e6e6e6; border: 1px solid #262a33; border-radius: 6px; padding: 6px; width: 320px; }
+  .err { color: #e85d75; font-size: 13px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+(function () {
+  'use strict';
+  var KEY = 'auto-router-management-key';
+  var app = document.getElementById('app');
+  var days = 7, timer = null;
+  var KNOWN = {
+    'claude-opus-5-5': '#ff8a3d', 'canopus': '#f2c14e', 'auto-cyber': '#e85d75',
+    'glm-5.3': '#4f8cff', 'claude-opus-5': '#a970ff', 'mimo-v2.6-flash': '#2ec4a6', 'kimi-k3': '#f2c14e',
+    'mimo-v2.6-pro': '#1b998b', 'gpt-6.1-sol': '#e85d75', 'glm-5.3-flash': '#9bb7ff',
+    'top': '#ff8a3d', 'mid': '#4f8cff', 'flash': '#2ec4a6', 'p50': '#4f8cff', 'p95': '#a970ff'
+  };
+  var PALETTE = ['#4f8cff', '#a970ff', '#2ec4a6', '#f2c14e', '#e85d75', '#ff8a3d', '#9bb7ff', '#1b998b'];
+  var STATUS = { '400': '#e85d75', '499': '#777', '502': '#a970ff', '429': '#f2c14e', '500': '#ff8a3d', '401': '#4f8cff', '402': '#2ec4a6', '524': '#9bb7ff' };
+
+  function esc(s) { return String(s).replace(/[&<>"']/g, function (c) { return '&#' + c.charCodeAt(0) + ';'; }); }
+  function short(m) { var i = String(m).lastIndexOf('/'); return i < 0 ? String(m) : String(m).slice(i + 1); }
+  // Known models keep the mock's colors; any other key takes the first palette
+  // color not used yet in this render, so two models never share a color.
+  var assigned = {};
+  function color(k) {
+    if (assigned[k]) return assigned[k];
+    var c = KNOWN[k] || KNOWN[short(k)], used = Object.keys(assigned).map(function (x) { return assigned[x]; });
+    for (var i = 0; !c && i < PALETTE.length; i++) if (used.indexOf(PALETTE[i]) < 0) c = PALETTE[i];
+    assigned[k] = c || PALETTE[used.length % PALETTE.length];
+    return assigned[k];
+  }
+  function usd(v) { return fmtf(v, v < 1 ? 4 : 2); }
+  function fmt(n) { return Math.round(n).toLocaleString('pt-BR'); }
+  function fmtf(n, d) { return n.toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+  function sum(a) { return a.reduce(function (x, y) { return x + (y || 0); }, 0); }
+  function per(d) { return d.bucket === 'week' ? 'semana' : 'dia'; }
+
+  function leg(items) {
+    return '<div class="leg">' + items.map(function (it) {
+      return '<span><i style="background:' + it[1] + '"></i>' + esc(it[0]) + '</span>';
+    }).join('') + '</div>';
+  }
+  function panel(title, body, note) {
+    return '<div class="panel"><div class="ptitle">' + esc(title) + '</div>' + body + (note ? '<div class="note">' + esc(note) + '</div>' : '') + '</div>';
+  }
+  function empty() { return '<div class="empty">sem dados ainda</div>'; }
+  function kpi(big, small, c) {
+    return '<div class="panel kpi"><div class="big" style="color:' + (c || '#e6e6e6') + '">' + esc(big) + '</div><div class="small">' + esc(small) + '</div></div>';
+  }
+  function row(xs) { return '<div class="row">' + xs.join('') + '</div>'; }
+  function grid(cols, xs) { return '<div class="grid" style="grid-template-columns:' + cols + '">' + xs.join('') + '</div>'; }
+  function sec(id, title, sub, body) {
+    return '<div class="sec" id="' + id + '"><div class="t">' + esc(title) + '</div><div class="s">' + esc(sub) + '</div>' + body + '</div>';
+  }
+
+  // stacked bars: one bar per bucket label, series [{name, values}].
+  function stacked(labels, series) {
+    var tot = labels.map(function (_, i) { return sum(series.map(function (s) { return s.values[i]; })); });
+    if (!sum(tot)) return empty();
+    var w = 560, h = 200, mx = Math.max.apply(null, tot) * 1.15, gap = w / labels.length, bw = gap * 0.6;
+    var s = '<svg viewBox="0 0 ' + w + ' ' + (h + 24) + '" width="100%">';
+    labels.forEach(function (lab, i) {
+      var x = i * gap + gap * 0.2, y = h;
+      series.forEach(function (se) {
+        var v = se.values[i] || 0;
+        if (!v) return;
+        var hh = v / mx * (h - 20);
+        y -= hh;
+        s += '<rect x="' + x.toFixed(0) + '" y="' + y.toFixed(1) + '" width="' + Math.max(1, bw).toFixed(0) + '" height="' + hh.toFixed(1) + '" fill="' + color(se.name) + '"><title>' + esc(se.name) + ': ' + v + '</title></rect>';
+      });
+      if (tot[i] && labels.length <= 16) s += '<text x="' + (x + bw / 2).toFixed(0) + '" y="' + Math.max(12, y - 5).toFixed(0) + '" font-size="11" text-anchor="middle" fill="#bbb">' + fmt(tot[i]) + '</text>';
+      if (labels.length <= 16 || i % 3 === 0) s += '<text x="' + (x + bw / 2).toFixed(0) + '" y="' + (h + 16) + '" font-size="11" text-anchor="middle" fill="#888">' + esc(lab) + '</text>';
+    });
+    return s + '</svg>' + leg(series.map(function (se) { return [short(se.name), color(se.name)]; }));
+  }
+
+  // lines: xs labels, series [{name, values}], null values are skipped.
+  function lines(xs, series, unit, h) {
+    h = h || 180;
+    var all = [];
+    series.forEach(function (se) { se.values.forEach(function (v) { if (v !== null && v !== undefined) all.push(v); }); });
+    if (!all.length || !Math.max.apply(null, all)) return empty();
+    var w = 560, mx = Math.max.apply(null, all) * 1.15;
+    function px(i) { return 50 + i * (w - 70) / Math.max(1, xs.length - 1); }
+    function py(v) { return h - v / mx * (h - 10); }
+    var s = '<svg viewBox="0 0 ' + w + ' ' + (h + 24) + '" width="100%">';
+    [0.25, 0.5, 0.75, 1].forEach(function (g) {
+      var v = mx / 1.15 * g;
+      s += '<line x1="46" x2="' + (w - 20) + '" y1="' + py(v).toFixed(0) + '" y2="' + py(v).toFixed(0) + '" stroke="#262a33"/><text x="42" y="' + (py(v) + 4).toFixed(0) + '" font-size="11" text-anchor="end" fill="#777">' + fmt(v) + (unit || '') + '</text>';
+    });
+    xs.forEach(function (x, i) {
+      if (xs.length <= 10 || i % 3 === 0) s += '<text x="' + px(i).toFixed(0) + '" y="' + (h + 16) + '" font-size="12" text-anchor="middle" fill="#aaa">' + esc(x) + '</text>';
+    });
+    series.forEach(function (se) {
+      var c = color(se.name), pts = [];
+      se.values.forEach(function (v, i) { if (v !== null && v !== undefined) pts.push([px(i), py(v)]); });
+      if (!pts.length) return;
+      s += '<polyline fill="none" stroke="' + c + '" stroke-width="2" points="' + pts.map(function (p) { return p[0].toFixed(0) + ',' + p[1].toFixed(0); }).join(' ') + '"/>';
+      s += pts.map(function (p) { return '<circle cx="' + p[0].toFixed(0) + '" cy="' + p[1].toFixed(0) + '" r="3" fill="' + c + '"/>'; }).join('');
+    });
+    return s + '</svg>' + (series.length > 1 ? leg(series.map(function (se) { return [short(se.name), color(se.name)]; })) : '');
+  }
+
+  // hbars: rows [label, value, color]; null values are dropped.
+  function hbars(rows, unit, fv) {
+    rows = rows.filter(function (r) { return r[1] !== null && r[1] !== undefined; });
+    if (!rows.length) return empty();
+    fv = fv || fmt;
+    var mx = Math.max.apply(null, rows.map(function (r) { return r[1]; })) || 1;
+    return rows.map(function (r) {
+      return '<div class="hb"><span class="k" title="' + esc(r[0]) + '">' + esc(r[0]) + '</span><span class="v"><span class="b" style="background:' + r[2] + ';width:calc(' + Math.max(1, r[1] / mx * 100).toFixed(1) + '% - 70px)"></span><span>' + esc(fv(r[1]) + (unit || '')) + '</span></span></div>';
+    }).join('');
+  }
+
+  // donut: parts [label, value, color].
+  function donut(parts) {
+    var tot = sum(parts.map(function (p) { return p[1]; }));
+    if (!tot) return empty();
+    var size = 160, r = size / 2 - 8, c = size / 2, a = 0;
+    var s = '<svg viewBox="0 0 ' + size + ' ' + size + '" width="' + size + '">';
+    parts.forEach(function (p) {
+      var f = p[1] / tot;
+      if (f >= 1) { s += '<circle cx="' + c + '" cy="' + c + '" r="' + r + '" fill="' + p[2] + '"><title>' + esc(p[0]) + ': ' + p[1] + '</title></circle>'; return; }
+      var a2 = a + f * 2 * Math.PI;
+      s += '<path d="M' + c + ',' + c + ' L' + (c + r * Math.sin(a)).toFixed(1) + ',' + (c - r * Math.cos(a)).toFixed(1) + ' A' + r + ',' + r + ' 0 ' + (f > 0.5 ? 1 : 0) + ' 1 ' + (c + r * Math.sin(a2)).toFixed(1) + ',' + (c - r * Math.cos(a2)).toFixed(1) + ' Z" fill="' + p[2] + '"><title>' + esc(p[0]) + ': ' + p[1] + '</title></path>';
+      a = a2;
+    });
+    return s + '<circle cx="' + c + '" cy="' + c + '" r="' + (r * 0.58) + '" fill="#171a21"/><text x="' + c + '" y="' + (c + 5) + '" text-anchor="middle" font-size="14" fill="#eee">' + fmt(tot) + '</text></svg>' + leg(parts.map(function (p) { return [p[0], p[2]]; }));
+  }
+
+  function router(d) {
+    var r = d.router, tiers = {};
+    r.tiers.forEach(function (t) { tiers[t.name] = t.n; });
+    var s = row([
+      kpi(fmt(r.decisions), 'decisões do auto-router'),
+      kpi(fmt(r.sessions_daily_sum), 'sessões (soma diária)'),
+      kpi(r.jev_p50_today === null ? '—' : fmt(r.jev_p50_today) + ' ms', 'Jev p50 hoje'),
+      kpi(r.decisions ? Math.round(100 * (tiers.top || 0) / r.decisions) + '%' : '—', 'decisões no tier top')
+    ]);
+    s += grid('2fr 1fr', [
+      panel('Modelo escolhido por ' + per(d), stacked(d.labels, r.by_model)),
+      panel('Tier', donut(r.tiers.map(function (t) { return [t.name, t.n, color(t.name)]; })))
+    ]);
+    s += grid('1fr 1fr', [
+      panel('Por que a decisão foi essa', hbars(r.reasons.map(function (x) { return [x.name, x.n, '#4f8cff']; })), 'keep = sessão continua no modelo anterior; o Jev só roda em mensagem humana nova.'),
+      panel('Latência do Jev por ' + per(d) + ' (ms)', lines(d.labels, [{ name: 'p50', values: r.jev_p50 }, { name: 'p95', values: r.jev_p95 }], '', 150))
+    ]);
+    return sec('r', 'Router', 'Qual modelo o auto-router escolhe e por quê', s);
+  }
+
+  function guarded(d) {
+    if (!d.guarded.length) return sec('g', 'Guarded', 'nenhum alias guarded configurado', panel('Guarded', empty()));
+    var s = '';
+    d.guarded.forEach(function (g) {
+      var flow = '<div class="flow">';
+      g.chain.forEach(function (m, i) {
+        if (i > 0) flow += '<div class="arrow">' + (i === 1 ? 'recusa/vazio' : 'erro/recusa/vazio') + ' → ' + fmt(g.edges[i - 1]) + '<div></div></div>';
+        flow += '<div class="panel" style="border-color:' + color(m) + '"><div style="font-weight:600">' + esc(short(m)) + '</div><div class="small">' + fmt(g.calls[i]) + ' chamadas</div></div>';
+      });
+      flow += '</div>';
+      if (d.guarded.length > 1) s += '<div class="alias">' + esc(g.alias) + '</div>';
+      s += flow;
+      s += grid('2fr 1fr', [
+        panel('Trocas por ' + per(d) + ', por destino', stacked(d.labels, g.switches_by_destination)),
+        panel('Motivo da troca', hbars(g.reasons.map(function (x) { return [x.name, x.n, '#e85d75']; })), 'refusal-error: recusou como erro HTTP · refusal-fallback: content_filter')
+      ]);
+      s += panel('Taxa de recusa do ' + short(g.chain[0]) + ' no guarded (% das chamadas do ' + per(d) + ')', lines(d.labels, [{ name: g.chain[0], values: g.refusal_rate }], '%', 140));
+      s += '<div class="gap"></div>';
+    });
+    var subtitle = d.guarded.map(function (g) { return g.alias + ': ' + g.chain.map(short).join(' → '); }).join(' · ');
+    return sec('g', 'Guarded', subtitle, s);
+  }
+
+  function compare(d) {
+    var ms = d.models;
+    if (!ms.length) return sec('c', 'Comparar modelos', 'velocidade, custo e consumo', panel('Modelos', empty()));
+    var p = d.days + 'd';
+    var s = row(ms.slice(0, 4).map(function (m) {
+      var big = m.cost_usd === null ? m.cost_note : 'US$ ' + usd(m.cost_usd);
+      var small = short(m.model) + ' · custo estimado ' + p + (m.cost_note && m.cost_usd !== null ? ' (' + m.cost_note + ')' : '');
+      return kpi(big, small, color(m.model));
+    }));
+    function bars(f, unit, fv) { return hbars(ms.map(function (m) { return [short(m.model), f(m), color(m.model)]; }), unit, fv); }
+    s += grid('1fr 1fr 1fr', [
+      panel('Latência p50 (ms)', bars(function (m) { return m.latency_p50; })),
+      panel('Latência p95 (ms)', bars(function (m) { return m.latency_p95; })),
+      panel('Primeiro token p50 (ms)', bars(function (m) { return m.ttft_p50; }))
+    ]);
+    s += grid('1fr 1fr 1fr', [
+      panel('Custo por 1.000 chamadas (US$)', bars(function (m) { return m.cost_per_1k; }, '', function (v) { return fmtf(v, 2); }), 'tokens × preço; modelos sem preço ou de assinatura ficam fora'),
+      panel('Tokens de saída por chamada', bars(function (m) { return m.out_per_call; })),
+      panel('Cache hit (% da entrada)', bars(function (m) { return m.cache_hit_pct; }, '%', function (v) { return fmtf(v, 1); }))
+    ]);
+    var up = ms.filter(function (m) { return m.response_mix.length > 1 || (m.response_mix.length === 1 && m.response_mix[0].name !== m.model); })[0];
+    var mix = up ? panel('O que o ' + short(up.model) + ' usou por baixo', donut(up.response_mix.map(function (x, i) { return [short(x.name), x.n, PALETTE[i % PALETTE.length]]; })))
+      : panel('O que o roteador de cima usou por baixo', empty());
+    s += grid('1fr 2fr', [mix,
+      panel('Latência p95 por ' + per(d) + ' (ms)', lines(d.labels, ms.slice(0, 6).map(function (m) { return { name: m.model, values: m.p95_series }; })))
+    ]);
+    return sec('c', 'Comparar modelos', ms.slice(0, 4).map(function (m) { return short(m.model); }).join(' × ') + ': velocidade, custo e consumo', s);
+  }
+
+  function quality(d) {
+    if (!d.guarded.length) return sec('q', 'Qualidade', 'O fallback resolve a recusa?', panel('Qualidade', empty()));
+    var ks = [], errs = 0, tool = 0;
+    d.guarded.forEach(function (g) {
+      g.rescue.forEach(function (r) {
+        var t = r.ok + r.fail;
+        ks.push(kpi(t ? fmtf(100 * r.ok / t, 1) + '%' : '—', short(r.model) + ' resolveu a recusa do ' + short(g.chain[0]), color(r.model)));
+      });
+      errs += g.empty_answers + g.fallback_errors;
+      tool += g.tool_escalations;
+    });
+    ks.push(kpi(fmt(errs), 'respostas vazias / erro do fallback'));
+    ks.push(kpi(fmt(tool), 'escalada por 3 erros de ferramenta'));
+    return sec('q', 'Qualidade', 'O fallback resolve a recusa?', row(ks));
+  }
+
+  function ops(d) {
+    var p = d.days + 'd', ks = [];
+    // Only aliases whose primary answered in the window; idle aliases add nothing.
+    d.guarded.filter(function (g) { return g.calls[0] > 0; }).forEach(function (g) {
+      ks.push(kpi(fmt(g.primary_400), short(g.chain[0]) + ' · HTTP 400 em ' + p));
+      ks.push(kpi(fmt(g.primary_400_refusal), '↳ eram recusas e trocaram de modelo', color(g.chain[g.chain.length - 1])));
+      ks.push(kpi(fmt(g.primary_400_other), '↳ outros 400 (não resgatados)', '#e85d75'));
+    });
+    d.models.forEach(function (m) {
+      m.status.forEach(function (st) { if (st.name === '402') ks.push(kpi(fmt(st.n), short(m.model) + ' · 402 sem crédito')); });
+    });
+    var s = ks.length ? row(ks) : '';
+    s += panel('Chamadas por hora, últimas 24h', lines(d.hour_labels.map(function (h) { return h + 'h'; }), d.models.slice(0, 5).map(function (m) { return { name: m.model, values: m.hours }; }), '', 160));
+    if (d.models.length) {
+      s += '<div class="gap"></div>' + grid('1fr 1fr 1fr', d.models.map(function (m) {
+        return panel(short(m.model) + ' · respostas não-200 (' + fmtf(m.non200_pct, 1) + '%)', m.status.length ? hbars(m.status.map(function (st) { return [st.name, st.n, STATUS[st.name] || '#888']; })) : '<div class="empty">nenhuma</div>');
+      }));
+    }
+    var tok = [], mx = 0;
+    d.models.forEach(function (m) { mx = Math.max(mx, m.tokens.input, m.tokens.cache, m.tokens.output); });
+    var div = mx >= 1e6 ? 1e6 : 1e3, unit = mx >= 1e6 ? 'milhões' : 'milhares';
+    ['input', 'cache', 'output'].forEach(function (k) {
+      var label = { input: ' entrada', cache: ' cache', output: ' saída' }[k];
+      d.models.forEach(function (m) { if (m.tokens[k] > 0) tok.push([short(m.model) + label, m.tokens[k] / div, color(m.model)]); });
+    });
+    s += panel('Tokens por modelo em ' + p + ' (' + unit + ')', hbars(tok, '', function (v) { return fmtf(v, 1); }));
+    return sec('o', 'Operação', 'Erros, volume e saúde', s);
+  }
+
+  function header(d, msg) {
+    var b = [7, 30, 90].map(function (n) { return '<button data-days="' + n + '"' + (n === days ? ' class="on"' : '') + '>' + n + ' dias</button>'; }).join('');
+    var sub = d ? 'Dados do proxy, últimos ' + d.days + ' dias' + (d.bucket === 'week' ? ' (por semana)' : '') + '. Gerado ' + d.generated_at.slice(8, 10) + '/' + d.generated_at.slice(5, 7) + ' ' + d.generated_at.slice(11, 16) + '. Atualiza a cada 60 s.' : msg;
+    return '<h2>Auto Router</h2><div class="sub">' + esc(sub) + '</div>' +
+      '<div class="bar">' + b + '<button data-reload="1">Recarregar</button><span>·</span><a href="#r">Router</a> · <a href="#g">Guarded</a> · <a href="#c">Comparar</a> · <a href="#q">Qualidade</a> · <a href="#o">Operação</a></div>';
+  }
+
+  function askKey(err) {
+    clearTimeout(timer);
+    app.innerHTML = '<h2>Auto Router</h2><div class="sub">Os dados ficam atrás da chave de gerenciamento. Ela fica só nesta aba (sessionStorage).</div>' +
+      '<form id="kf"><input id="k" type="password" autocomplete="off" placeholder="chave de gerenciamento" aria-label="chave de gerenciamento" required><button type="submit">Entrar</button></form>' + (err ? '<div class="err">' + esc(err) + '</div>' : '');
+    document.getElementById('kf').addEventListener('submit', function (e) {
+      e.preventDefault();
+      sessionStorage.setItem(KEY, document.getElementById('k').value);
+      load();
+    });
+  }
+
+  function load() {
+    var key = sessionStorage.getItem(KEY);
+    if (!key) { askKey(); return; }
+    clearTimeout(timer);
+    fetch('/v0/management/auto-router/stats?days=' + days, { headers: { 'X-Management-Key': key }, cache: 'no-store' }).then(function (res) {
+      if (res.status === 401 || res.status === 403) {
+        sessionStorage.removeItem(KEY);
+        askKey('Chave recusada (HTTP ' + res.status + ').');
+        return null;
+      }
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    }).then(function (d) {
+      if (!d) return;
+      assigned = {};
+      d.models.forEach(function (m) { color(m.model); });
+      d.router.by_model.forEach(function (s) { color(s.name); });
+      app.innerHTML = header(d) + router(d) + guarded(d) + compare(d) + quality(d) + ops(d);
+      timer = setTimeout(load, 60000);
+    }).catch(function (e) {
+      app.innerHTML = header(null, 'Falha ao carregar: ' + e.message);
+      timer = setTimeout(load, 60000);
+    });
+  }
+
+  app.addEventListener('click', function (e) {
+    var t = e.target;
+    if (t.dataset && t.dataset.days) { days = Number(t.dataset.days); load(); }
+    if (t.dataset && t.dataset.reload) load();
+  });
+  load();
+})();
+</script>
+</body>
+</html>

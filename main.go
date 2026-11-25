@@ -138,6 +138,7 @@ func cliproxyPluginFree(ptr unsafe.Pointer, _ C.size_t) {
 //export cliproxyPluginShutdown
 func cliproxyPluginShutdown() {
 	waitPluginShutdown(beginPluginShutdown())
+	stopStats()
 	// The ABI cannot cancel a callback already inside the host; clear the gate before unload to block new callbacks.
 	C.clear_host_api()
 }
