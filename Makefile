@@ -13,7 +13,7 @@ TEST_INSTALL_DIR := /home/hermes/cliproxyapi-test/plugins
 
 .PHONY: build test smoke install clean
 build: $(PLUGIN)
-$(PLUGIN): $(shell find . -name '*.go' -not -path './updater/*') go.mod
+$(PLUGIN): $(shell find . -name '*.go' -not -path './updater/*') dashboard.html go.mod
 	mkdir -p $(BIN_DIR)
 	go build -buildmode=c-shared -o $(PLUGIN) .
 	rm -f $(BIN_DIR)/auto-router.h

@@ -48,6 +48,8 @@ The plugin accepts these fields under `plugins.configs.auto-router`:
 - `snippet_chars`: maximum characters of the latest human message sent to Jev. Default and cap: `4000`.
 - `jev_timeout_ms`: Jev request timeout. Default: `2000`.
 - `refusal_fallback`: optional list of refusal-guarded aliases. Absent or empty means the feature is off. Each entry needs `alias`, `primary` and `fallback`; `fallback` is one model name or an ordered list of model names. An entry missing any of the three, or whose `fallback` holds no non-empty name, is ignored. Optional `prose_refusal: true` also switches on a Jev-confirmed plain-text refusal, for non-streaming requests only.
+- `prices`: optional dashboard prices in US$ per 1M tokens, keyed by model ID. See [Auto Router dashboard](#auto-router-dashboard).
+- `stats_dir`: directory for the dashboard's daily stats files. Default: `plugins/auto-router/stats`, relative to the proxy's working directory.
 
 ## Model failover
 
@@ -134,6 +136,39 @@ The execution envelope is matched by shape, not by guesswork: the payload must c
 The raise is latched per episode. An episode is the trailing run of marked failures, identified by the call it started with, so a longer run of the same failures never raises twice and a fresh run after any progress can raise once more. The session floor still applies: difficulty, tier, and thinking never decrease.
 
 The envelope shape was captured on hermes-lab from a real Hermes turn driven against a disposable recorder. A failing command returned `{"output": "", "exit_code": 7, "error": null}` and a passing command returned `{"output": "", "exit_code": 0, "error": null}`, both on a `tool` message carrying only `content`, `role` and `tool_call_id`. OMP's wire shape was not captured, so its coverage is unverified.
+
+## Auto Router dashboard
+
+The plugin adds an "Auto Router" entry to the proxy's management UI (`management.html`, under PLUGINS). The entry opens `/v0/resource/plugins/auto-router/dashboard` in the panel's frame. The page has five sections:
+
+- Router: decisions per day by chosen model, tier split, decision reason (every reason the code emits, plus `other`), Jev latency p50/p95, and the daily count of distinct sessions.
+- Guarded: for each `refusal_fallback` alias, calls per model in the chain, switches per day by destination, switches by reason, and the primary's refusal rate (switches / primary calls).
+- Comparar: for every model that answered through this plugin, estimated cost, latency p50/p95, first-token p50, cost per 1,000 calls, output tokens per call, cache hit %, the `ResponseModel` mix of an upstream router, and latency p95 per day.
+- Qualidade: the share of primary refusals each fallback answered, fallback errors and empty answers, and tool-error escalations.
+- Operação: non-200 responses by status per model, calls per hour over the last 24 hours, the primary's 400s split into refusals that switched and other 400s, 402s, and tokens per model.
+
+A selector shows 7, 30 or 90 days. At 90 days the daily charts group by week. Days are counted in America/Sao_Paulo time (UTC-3). The page reloads its data every 60 seconds.
+
+Where the data comes from. Everything comes from traffic that passes through this plugin; nothing is read from ARTEX or a database.
+
+- Routing decisions and guarded switches are counted where the plugin already logs them.
+- Calls, tokens, latency, first token, status and `ResponseModel` come from the host's usage records (`usage_plugin` capability). The plugin keeps a record only when the request went through `auto-router` or a guarded alias. It tags each request it executes with the request's trace ID (`trace_id` in the executor metadata). The host stamps the same trace ID on every usage record of that request, so the primary and fallback records of one guarded call pair on it.
+- The host emits no usage record for a model served by another plugin's executor (for example `nous-sse` models) when this plugin calls it. Such models appear in the Router section but not in Comparar or Operação.
+
+Cost. Prices are US$ per 1M tokens. The `prices` map wins over the `cost` entry of `models.yaml`. A model with neither shows "sem preço". An upstream router such as `orcarouter/auto-cyber` is priced by the `ResponseModel` it reports, falling back to its own ID. Cache reads without a `cache_read` price are billed at the input price, and the panel says "cache ao preço de entrada". `subscription: true` shows "assinatura" instead of a cost. Uncached input is input minus cache reads, except for the `claude` provider, which reports cache reads apart from input.
+
+```yaml
+prices:
+  asteras/canopus: {input: 1.0, output: 4.0, cache_read: 0.1}
+  orca/orcacyber-flash-1.0: {input: 0.3, output: 1.2}
+  claude-opus-5-5: {subscription: true}
+```
+
+These values are a format example, not real prices.
+
+Storage and retention. The aggregate is kept in memory. Every minute, and when the plugin shuts down for a hot reload, it is written to one JSON file per day in `stats_dir` (mode 0600, written to a temp file and renamed). The files are loaded again at start, so the numbers survive a proxy restart or a plugin reload; a process exit loses at most the last minute. The plugin keeps 91 days and deletes older files. A corrupt file is logged and skipped. The files hold model names, counts, token totals, costs, latency histograms and the 4-byte session hashes the decision log already prints. They never hold prompts, bodies, keys or raw session IDs. Data starts at the version that ships the dashboard; there is no backfill.
+
+Auth. The numbers are served only by `GET /v0/management/auto-router/stats?days=7|30|90`, behind the proxy's management key. The page itself holds no data, so serving it without auth is safe. It asks for the management key once and keeps it in `sessionStorage` for that tab. It sends the key as `X-Management-Key`, and a 401 clears it and asks again. It never reads the panel's own storage. The page sends `Content-Security-Policy` (only its own inline script, requests to the same origin) and `X-Content-Type-Options: nosniff`.
 
 ## Benchmark table and tiers
 

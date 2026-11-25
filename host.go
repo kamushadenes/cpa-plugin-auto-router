@@ -148,6 +148,7 @@ func execute(raw []byte) ([]byte, error) {
 	if alias, ok := refusalAlias(loadedConfig(), stripThinkingSuffix(req.Model)); ok {
 		return executeRefusal(req, alias)
 	}
+	stats.tagTrace(req.Metadata, traceTag{router: true})
 	decision, routeCtx, generation, err := decisionForExecutorWithContext(req)
 	if err != nil {
 		return errorEnvelope("executor_error", err.Error()), nil
@@ -225,6 +226,7 @@ func executeStream(raw []byte) ([]byte, error) {
 	if alias, ok := refusalAlias(loadedConfig(), stripThinkingSuffix(req.Model)); ok {
 		return executeRefusalStream(req, alias)
 	}
+	stats.tagTrace(req.Metadata, traceTag{router: true})
 	pluginStreamID := strings.TrimSpace(req.StreamID)
 	if pluginStreamID == "" {
 		return errorEnvelope("executor_error", "stream_id is required for executor.execute_stream"), nil
@@ -604,6 +606,7 @@ func logFailover(req rpcExecutorRequest, decision decide.Decision, routeCtx rout
 	}
 	payload, _ := json.Marshal(fields)
 	hostLog(req.HostCallbackID, "info", string(payload), nil)
+	stats.recordDecision(time.Now(), decision.Model, decision.Tier, reason, 0, fields["session"].(string))
 }
 
 // ponytail: match transport errors by text on this host version; switch to numeric status if a future host exposes it.

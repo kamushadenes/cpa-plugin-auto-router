@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/kamushadenes/cpa-plugin-auto-router/internal/jev"
 	"github.com/kamushadenes/cpa-plugin-auto-router/internal/snippet"
@@ -181,7 +182,9 @@ func refusalAlias(cfg pluginConfig, model string) (refusalFallbackAlias, bool) {
 // (the auto-router's signal and exclusions) runs on the last fallback only;
 // the streak resets as soon as a later tool result succeeds.
 func refusalChain(req rpcExecutorRequest, alias refusalFallbackAlias, stream bool) (chain []string, escalated bool) {
-	if snippet.Extract(req.OriginalRequest).ToolErrorStreak >= toolErrorBumpThreshold {
+	escalated = snippet.Extract(req.OriginalRequest).ToolErrorStreak >= toolErrorBumpThreshold
+	stats.tagTrace(req.Metadata, traceTag{alias: alias.Alias, primary: stripThinkingSuffix(alias.Primary), escalated: escalated})
+	if escalated {
 		last := alias.Fallback[len(alias.Fallback)-1]
 		logRefusalFallback(req, alias, alias.Primary, last, toolErrorEscalationReason, stream)
 		return []string{last}, true
@@ -212,6 +215,7 @@ func logRefusalFallback(req rpcExecutorRequest, alias refusalFallbackAlias, from
 		"stream":   stream,
 	})
 	hostLog(req.HostCallbackID, "info", string(payload), nil)
+	stats.recordSwitch(time.Now(), alias.Alias, from, to, reason)
 }
 
 // errorSwitchReason is the switch reason for an error from a model that is not
