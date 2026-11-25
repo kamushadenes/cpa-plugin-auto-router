@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/kamushadenes/cpa-plugin-auto-router/internal/jev"
@@ -15,19 +16,38 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginabi"
 	"github.com/router-for-me/CLIProxyAPI/v8/sdk/pluginapi"
 	"github.com/tidwall/gjson"
+	"gopkg.in/yaml.v3"
 )
 
 // refusalFallbackAlias is one configured alias: requests for Alias run on
-// Primary, and are re-run on Fallback only when Primary refuses on safety
-// grounds. Primary and Fallback reach the host verbatim, so a thinking suffix
-// such as "claude-opus-5-5(high)" belongs in the configured value.
+// Primary, and move down the ordered Fallback chain only when the current
+// model refuses on safety grounds, answers with nothing, or (fallbacks only)
+// fails. Primary and every fallback reach the host verbatim, so a thinking
+// suffix such as "claude-opus-5-5(high)" belongs in the configured value.
 // ProseRefusal also treats a Jev-confirmed prose refusal as a refusal, on the
 // non-streaming path only.
 type refusalFallbackAlias struct {
-	Alias        string `yaml:"alias"`
-	Primary      string `yaml:"primary"`
-	Fallback     string `yaml:"fallback"`
-	ProseRefusal bool   `yaml:"prose_refusal"`
+	Alias        string         `yaml:"alias"`
+	Primary      string         `yaml:"primary"`
+	Fallback     fallbackModels `yaml:"fallback"`
+	ProseRefusal bool           `yaml:"prose_refusal"`
+}
+
+// fallbackModels is the ordered fallback chain. YAML accepts a single string
+// (the original form) or a list of strings.
+type fallbackModels []string
+
+func (f *fallbackModels) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		*f = fallbackModels{node.Value}
+		return nil
+	}
+	var models []string
+	if err := node.Decode(&models); err != nil {
+		return err
+	}
+	*f = models
+	return nil
 }
 
 const (
@@ -63,13 +83,19 @@ func requestFormat(sourceFormat string) string {
 // flushes and streams through unguarded.
 const refusalGuardMaxBytes = 1 << 20
 
-// refusalProseReason logs a switch on a Jev-confirmed prose refusal;
-// refusalErrorReason logs a switch on a primary error carrying a refusal
-// marker; proseRefusalUnconfirmedLog logs a prose candidate kept because Jev
-// failed.
+// Switch reasons: refusalProseReason is a Jev-confirmed prose refusal;
+// refusalErrorReason is an error carrying a refusal marker;
+// fallbackErrorReason is any other error from a fallback that is not the last;
+// emptyAnswerReason is an answer with no visible text and no tool call;
+// toolErrorEscalationReason sends a request whose trailing tool results failed
+// straight to the last fallback. proseRefusalUnconfirmedLog logs a prose
+// candidate kept because Jev failed.
 const (
 	refusalProseReason         = "prose-refusal"
 	refusalErrorReason         = "refusal-error"
+	fallbackErrorReason        = "fallback-error"
+	emptyAnswerReason          = "empty-answer"
+	toolErrorEscalationReason  = "tool-error-escalation"
 	proseRefusalUnconfirmedLog = "prose_refusal_unconfirmed"
 )
 
@@ -114,14 +140,22 @@ const (
 
 // normalizeRefusalFallback trims the configured aliases and drops incomplete
 // entries, so a half-written entry disables that alias instead of claiming a
-// request it cannot serve.
+// request it cannot serve. Fallback entries are trimmed, and empty entries and
+// repeats of an earlier model in the chain are dropped, so each model runs at
+// most once per request.
 func normalizeRefusalFallback(entries []refusalFallbackAlias) []refusalFallbackAlias {
 	kept := make([]refusalFallbackAlias, 0, len(entries))
 	for _, entry := range entries {
 		entry.Alias = strings.TrimSpace(entry.Alias)
 		entry.Primary = strings.TrimSpace(entry.Primary)
-		entry.Fallback = strings.TrimSpace(entry.Fallback)
-		if entry.Alias == "" || entry.Primary == "" || entry.Fallback == "" || entry.Alias == pluginIdentifier {
+		chain := []string{entry.Primary}
+		for _, model := range entry.Fallback {
+			if model = strings.TrimSpace(model); model != "" && !slices.Contains(chain, model) {
+				chain = append(chain, model)
+			}
+		}
+		entry.Fallback = chain[1:]
+		if entry.Alias == "" || entry.Primary == "" || len(entry.Fallback) == 0 || entry.Alias == pluginIdentifier {
 			continue
 		}
 		kept = append(kept, entry)
@@ -142,7 +176,23 @@ func refusalAlias(cfg pluginConfig, model string) (refusalFallbackAlias, bool) {
 	return refusalFallbackAlias{}, false
 }
 
-func refusalRouterHeader(model string, failed []string) string {
+// refusalChain returns the models a request tries, in order. A request whose
+// trailing tool results are toolErrorBumpThreshold or more explicit failures
+// (the auto-router's signal and exclusions) runs on the last fallback only;
+// the streak resets as soon as a later tool result succeeds.
+func refusalChain(req rpcExecutorRequest, alias refusalFallbackAlias, stream bool) (chain []string, escalated bool) {
+	if snippet.Extract(req.OriginalRequest).ToolErrorStreak >= toolErrorBumpThreshold {
+		last := alias.Fallback[len(alias.Fallback)-1]
+		logRefusalFallback(req, alias, alias.Primary, last, toolErrorEscalationReason, stream)
+		return []string{last}, true
+	}
+	return append([]string{alias.Primary}, alias.Fallback...), false
+}
+
+func refusalRouterHeader(model string, failed []string, escalated bool) string {
+	if escalated {
+		return model + ";" + toolErrorEscalationReason
+	}
 	if len(failed) == 0 {
 		return model + ";" + refusalGuardReason
 	}
@@ -150,46 +200,66 @@ func refusalRouterHeader(model string, failed []string) string {
 	return model + ";" + refusalFallbackReason + ";failed_from=" + string(raw)
 }
 
-func logRefusalFallback(req rpcExecutorRequest, alias refusalFallbackAlias, reason string, stream bool) {
+// logRefusalFallback logs one switch from the model that failed to the model
+// that runs next. Bodies are never logged.
+func logRefusalFallback(req rpcExecutorRequest, alias refusalFallbackAlias, from, to, reason string, stream bool) {
 	payload, _ := json.Marshal(map[string]any{
 		"alias":    alias.Alias,
 		"primary":  alias.Primary,
-		"fallback": alias.Fallback,
+		"fallback": to,
+		"from":     from,
 		"reason":   reason,
 		"stream":   stream,
 	})
 	hostLog(req.HostCallbackID, "info", string(payload), nil)
 }
 
-// executeRefusal runs a non-streaming alias request on the primary model and
-// re-runs the untouched body on the fallback model when the primary refuses,
-// either in a 2xx body or as an error carrying a refusal marker. Every other
-// outcome, host errors included, is returned as-is.
+// errorSwitchReason is the switch reason for an error from a model that is not
+// the last in the chain: an error carrying a refusal marker always switches,
+// any other error switches only from a fallback. "" returns the error as-is.
+func errorSwitchReason(err error, fromFallback bool) string {
+	if refusalErrorCue.MatchString(err.Error()) {
+		return refusalErrorReason
+	}
+	if fromFallback {
+		return fallbackErrorReason
+	}
+	return ""
+}
+
+// executeRefusal runs a non-streaming alias request down its chain with the
+// untouched body. A model that is not the last hands over on a refusal (2xx
+// body, refusal-marked error, or confirmed prose), an empty answer, or, for a
+// fallback, any error. The primary's other errors and the last model's
+// outcome are returned as-is.
 func executeRefusal(req rpcExecutorRequest, alias refusalFallbackAlias) ([]byte, error) {
-	response, err := executeRefusalModel(req, alias.Primary)
-	if err != nil && !refusalErrorCue.MatchString(err.Error()) {
-		return errorEnvelope("executor_error", err.Error()), nil
-	}
-	model := alias.Primary
-	var failed []string
-	reason := ""
+	chain, escalated := refusalChain(req, alias, false)
 	format := requestFormat(req.SourceFormat)
-	if err != nil {
-		reason = refusalErrorReason
-	} else if refusedResponse(format, response.Body) {
-		reason = refusalFallbackReason
-	} else if alias.ProseRefusal && proseRefused(req, alias, format, response.Body) {
-		reason = refusalProseReason
-	}
-	if reason != "" {
-		fallback, fallbackErr := executeRefusalModel(req, alias.Fallback)
-		if fallbackErr != nil {
-			return errorEnvelope("executor_error", fallbackErr.Error()), nil
+	var failed []string
+	var response pluginapi.HostModelExecutionResponse
+	for i, model := range chain {
+		var err error
+		response, err = executeRefusalModel(req, model)
+		reason := ""
+		if i < len(chain)-1 {
+			if err != nil {
+				reason = errorSwitchReason(err, i > 0)
+			} else if refusedResponse(format, response.Body) {
+				reason = refusalFallbackReason
+			} else if emptyAnswer(format, response.Body) {
+				reason = emptyAnswerReason
+			} else if alias.ProseRefusal && proseRefused(req, alias, model, chain[i+1], format, response.Body) {
+				reason = refusalProseReason
+			}
 		}
-		response = fallback
-		model = alias.Fallback
-		failed = []string{alias.Primary}
-		logRefusalFallback(req, alias, reason, false)
+		if reason == "" {
+			if err != nil {
+				return errorEnvelope("executor_error", err.Error()), nil
+			}
+			break
+		}
+		logRefusalFallback(req, alias, model, chain[i+1], reason, false)
+		failed = append(failed, model)
 	}
 	headers := cloneHeaders(response.Headers)
 	if headers == nil {
@@ -198,33 +268,41 @@ func executeRefusal(req rpcExecutorRequest, alias refusalFallbackAlias) ([]byte,
 	if headers.Get("Content-Type") == "" {
 		headers.Set("Content-Type", contentTypeFor(req.SourceFormat, false))
 	}
-	headers.Set("X-Auto-Router", refusalRouterHeader(model, failed))
+	headers.Set("X-Auto-Router", refusalRouterHeader(chain[len(failed)], failed, escalated))
 	return okEnvelope(pluginapi.ExecutorResponse{Payload: response.Body, Headers: headers})
 }
 
 // proseRefused reports a Jev-confirmed prose refusal. Jev is asked only when
 // the visible answer carries refusal phrasing, and any Jev failure keeps the
-// primary answer. Jev only picks which model answers the unchanged request.
-func proseRefused(req rpcExecutorRequest, alias refusalFallbackAlias, format string, body []byte) bool {
-	text := visibleAnswerText(format, body)
+// answer. Jev only picks which model answers the unchanged request.
+func proseRefused(req rpcExecutorRequest, alias refusalFallbackAlias, model, next, format string, body []byte) bool {
+	text, _ := visibleAnswerText(format, body)
 	if !proseRefusalCue.MatchString(strings.ReplaceAll(text, "’", "'")) {
 		return false
 	}
 	cfg := loadedConfig()
 	probability, err := jev.Refusal(context.Background(), jevConfig(cfg), snippet.Prepare(text, cfg.SnippetChars))
 	if err != nil {
-		logRefusalFallback(req, alias, proseRefusalUnconfirmedLog, false)
+		logRefusalFallback(req, alias, model, next, proseRefusalUnconfirmedLog, false)
 		return false
 	}
 	return probability >= proseRefusalThreshold
+}
+
+// emptyAnswer reports a 2xx answer with no visible text and no tool call. An
+// entry protocol the detectors do not read never counts as empty.
+func emptyAnswer(format string, body []byte) bool {
+	text, acted := visibleAnswerText(format, body)
+	return format != "" && !acted && strings.TrimSpace(text) == ""
 }
 
 // visibleAnswerText returns the assistant answer text of a non-streaming body
 // in the host's exit format: message.content strings for chat-completions, and
 // output_text parts of message items for responses (see the translator shapes
 // below). Reasoning and tool arguments are never returned. A response with a
-// tool call yields "": the primary acted, and a switch would drop that call.
-func visibleAnswerText(format string, body []byte) string {
+// tool call yields "" and acted: the model acted, and a switch would drop that
+// call.
+func visibleAnswerText(format string, body []byte) (text string, acted bool) {
 	root := gjson.ParseBytes(body)
 	var parts []string
 	switch format {
@@ -232,7 +310,7 @@ func visibleAnswerText(format string, body []byte) string {
 		for _, choice := range root.Get("choices").Array() {
 			message := choice.Get("message")
 			if len(message.Get("tool_calls").Array()) > 0 {
-				return ""
+				return "", true
 			}
 			if content := message.Get("content"); content.Type == gjson.String {
 				parts = append(parts, content.String())
@@ -250,11 +328,11 @@ func visibleAnswerText(format string, body []byte) string {
 				}
 			default:
 				// function_call, custom_tool_call, web_search_call and the other tool items.
-				return ""
+				return "", true
 			}
 		}
 	}
-	return strings.Join(parts, "\n")
+	return strings.Join(parts, "\n"), false
 }
 
 func executeRefusalModel(req rpcExecutorRequest, model string) (pluginapi.HostModelExecutionResponse, error) {
@@ -285,14 +363,15 @@ func executeRefusalModel(req rpcExecutorRequest, model string) (pluginapi.HostMo
 }
 
 // refusalGuardedStream is the state handed to the stream pump once the guard
-// knows which model the client is going to hear. reason is the logged switch
-// reason, empty when the primary answers.
+// knows which model the client is going to hear. next is the model a switch
+// would have used, empty when the answering model is the last in the chain.
 type refusalGuardedStream struct {
-	ready    hostStreamReady
-	buffered [][]byte
-	model    string
-	failed   []string
-	reason   string
+	ready     hostStreamReady
+	buffered  [][]byte
+	model     string
+	next      string
+	failed    []string
+	escalated bool
 }
 
 // executeRefusalStream serves a streaming alias request. The buffering phase
@@ -311,9 +390,6 @@ func executeRefusalStream(req rpcExecutorRequest, alias refusalFallbackAlias) ([
 		endPluginStream()
 		return errorEnvelope("executor_error", err.Error()), nil
 	}
-	if start.reason != "" {
-		logRefusalFallback(req, alias, start.reason, true)
-	}
 	go func(start refusalGuardedStream) {
 		defer endPluginStream()
 		if err := pumpRefusalGuardedStream(req, alias, start, pluginStreamID); err != nil {
@@ -324,30 +400,53 @@ func executeRefusalStream(req rpcExecutorRequest, alias refusalFallbackAlias) ([
 	}(start)
 	headers := http.Header{
 		"Content-Type":  []string{contentTypeFor(req.SourceFormat, true)},
-		"X-Auto-Router": []string{refusalRouterHeader(start.model, start.failed)},
+		"X-Auto-Router": []string{refusalRouterHeader(start.model, start.failed, start.escalated)},
 	}
 	return okEnvelope(map[string]any{"headers": headers})
 }
 
-// startRefusalGuardedStream opens the primary stream and buffers its chunks
-// until the first visible answer output (flush and stream through) or a refusal
-// with nothing emitted yet (drop the buffer and stream the fallback instead).
-// Reasoning deltas are buffered, not output: a model with reasoning enabled
-// streams thinking before it refuses, and that thinking is dropped on a switch.
+// startRefusalGuardedStream walks the chain: every model except the last is
+// guarded until its first visible output, and the last model's stream (or open
+// error) is returned as-is.
 func startRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlias) (refusalGuardedStream, error) {
-	ready, err := openHostStream(context.Background(), req, alias.Primary, req.OriginalRequest)
-	if err != nil {
-		if !refusalErrorCue.MatchString(err.Error()) {
-			return refusalGuardedStream{}, err
+	chain, escalated := refusalChain(req, alias, true)
+	var failed []string
+	for i, model := range chain[:len(chain)-1] {
+		start, reason, err := guardRefusalStream(req, model, i > 0)
+		if reason == "" {
+			if err != nil {
+				return refusalGuardedStream{}, err
+			}
+			start.next, start.failed = chain[i+1], failed
+			return start, nil
 		}
-		return openRefusalFallbackStream(req, alias, refusalErrorReason)
+		logRefusalFallback(req, alias, model, chain[i+1], reason, true)
+		failed = append(failed, model)
+	}
+	last := chain[len(chain)-1]
+	ready, err := openHostStream(context.Background(), req, last, req.OriginalRequest)
+	if err != nil {
+		return refusalGuardedStream{}, err
+	}
+	return refusalGuardedStream{ready: ready, model: last, failed: failed, escalated: escalated}, nil
+}
+
+// guardRefusalStream opens model's stream and buffers its chunks until the
+// first visible answer output (flush and stream through). A non-empty reason
+// hands the request to the next model: a refusal or an end of stream with
+// nothing visible yet, or an error errorSwitchReason accepts. Reasoning deltas
+// are buffered, not output: a model with reasoning enabled streams thinking
+// before it refuses, and that thinking is dropped on a switch.
+func guardRefusalStream(req rpcExecutorRequest, model string, fromFallback bool) (refusalGuardedStream, string, error) {
+	ready, err := openHostStream(context.Background(), req, model, req.OriginalRequest)
+	if err != nil {
+		return refusalGuardedStream{}, errorSwitchReason(err, fromFallback), err
 	}
 	format := requestFormat(req.SourceFormat)
 	payload, done := ready.firstPayload, ready.done
 	ready.firstPayload = nil
 	buffered := make([][]byte, 0, 8)
 	bufferedBytes := 0
-	refused := false
 	for {
 		if len(payload) > 0 {
 			buffered = append(buffered, payload)
@@ -356,54 +455,43 @@ func startRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlia
 				break
 			}
 			if streamChunkRefused(format, payload) {
-				refused = true
-				break
+				closeRegisteredPluginHostStream(ready.streamID)
+				return refusalGuardedStream{}, refusalFallbackReason, nil
 			}
 		}
-		if done || bufferedBytes >= refusalGuardMaxBytes {
+		if done {
+			if format != "" {
+				closeRegisteredPluginHostStream(ready.streamID)
+				return refusalGuardedStream{}, emptyAnswerReason, nil
+			}
+			break
+		}
+		if bufferedBytes >= refusalGuardMaxBytes {
 			break
 		}
 		payload, done, err = readHostStreamChunk(ready.streamID)
 		if err != nil {
 			closeRegisteredPluginHostStream(ready.streamID)
-			return refusalGuardedStream{}, err
+			return refusalGuardedStream{}, errorSwitchReason(err, fromFallback), err
 		}
 	}
 	ready.done = done
-	if !refused {
-		return refusalGuardedStream{ready: ready, buffered: buffered, model: alias.Primary}, nil
-	}
-	closeRegisteredPluginHostStream(ready.streamID)
-	return openRefusalFallbackStream(req, alias, refusalFallbackReason)
-}
-
-// openRefusalFallbackStream opens the fallback stream after the primary refused.
-func openRefusalFallbackStream(req rpcExecutorRequest, alias refusalFallbackAlias, reason string) (refusalGuardedStream, error) {
-	fallbackReady, err := openHostStream(context.Background(), req, alias.Fallback, req.OriginalRequest)
-	if err != nil {
-		return refusalGuardedStream{}, err
-	}
-	return refusalGuardedStream{
-		ready:  fallbackReady,
-		model:  alias.Fallback,
-		failed: []string{alias.Primary},
-		reason: reason,
-	}, nil
+	return refusalGuardedStream{ready: ready, buffered: buffered, model: model}, "", nil
 }
 
 func pumpRefusalGuardedStream(req rpcExecutorRequest, alias refusalFallbackAlias, start refusalGuardedStream, pluginStreamID string) error {
 	var observe func([]byte)
 	format := requestFormat(req.SourceFormat)
-	if start.reason == "" {
+	if start.next != "" {
 		logged := false
 		observe = func(payload []byte) {
-			// The primary stream is already reaching the client, so a refusal
-			// that arrives now cannot be un-sent: report it, never switch.
+			// The stream is already reaching the client, so a refusal that
+			// arrives now cannot be un-sent: report it, never switch.
 			if logged || !streamChunkRefused(format, payload) {
 				return
 			}
 			logged = true
-			logRefusalFallback(req, alias, refusalAfterOutputLog, true)
+			logRefusalFallback(req, alias, start.model, start.next, refusalAfterOutputLog, true)
 		}
 	}
 	for _, chunk := range start.buffered {
