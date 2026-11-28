@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-28
+
+### Fixed
+- Fallback calls to models with a provider prefix now appear in the dashboard's guarded chain counts.
+- Daily dashboard files from 0.4.0 are migrated to the new chain keys when loaded.
+
 ## [0.4.0] - 2026-11-25
 
 ### Added

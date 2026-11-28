@@ -168,6 +168,73 @@ func TestGuardedPairingByTraceID(t *testing.T) {
 	}
 }
 
+// openai-compatibility providers report the bare name in Model ("canopus")
+// and the provider-prefixed config name in Alias ("asteras/canopus"); the
+// guarded chain is keyed by the config name.
+func TestGuardedChainKeyUsesAlias(t *testing.T) {
+	s := newStatsStore()
+	cfg := guardedCfg()
+	alias := cfg.RefusalFallback[0]
+	tag := traceTag{alias: alias.Alias, primary: "claude-opus-5-5"}
+
+	s.tagTrace(map[string]any{"trace_id": "t1"}, tag)
+	s.recordSwitch(statsNow, alias.Alias, alias.Primary, "asteras/canopus", refusalErrorReason)
+	s.recordUsage(usage("t1", "claude-opus-5-5", "", true, 400, 10, 0, 0), usagePrice{})
+	fallback := usage("t1", "canopus", "", false, 0, 10, 0, 5)
+	fallback.Alias = "asteras/canopus"
+	s.recordUsage(fallback, usagePrice{})
+
+	snap := s.snapshot(7, statsNow, cfg)
+	g := snap.Guarded[0]
+	if strings.Join(g.Chain, ",") != "claude-opus-5-5,asteras/canopus,orcarouter/auto-cyber" {
+		t.Fatalf("chain = %v", g.Chain)
+	}
+	if g.Calls[0] != 1 || g.Calls[1] != 1 || g.Calls[2] != 0 {
+		t.Errorf("calls = %v, want [1 1 0] (fallback keyed by its alias)", g.Calls)
+	}
+	if len(g.Rescue) != 2 || g.Rescue[0] != (rescueStat{Model: "asteras/canopus", OK: 1}) {
+		t.Errorf("rescue = %+v, want asteras/canopus OK=1", g.Rescue)
+	}
+	if s.days["2026-11-25"].Models["canopus"] == nil {
+		t.Error("per-model line lost the host's bare model name")
+	}
+}
+
+// Daily files written by 0.4.0 keyed the guarded chain by the bare model
+// name ("canopus"); load moves those counts onto the configured chain name.
+func TestLoadMigratesGuardedChainKeys(t *testing.T) {
+	dir := t.TempDir()
+	raw := `{"day":"2026-11-25","guarded":{"opus-guarded":{"calls":{"canopus":5,"claude-opus-5-5":2,"other/model":3},"rescued":{"canopus":5},"unrescued":{"canopus":1}}}}`
+	if err := os.WriteFile(filepath.Join(dir, "2026-11-25.json"), []byte(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	s := newStatsStore()
+	s.dir = dir
+	s.load(statsNow, guardedCfg())
+
+	g := s.days["2026-11-25"].Guarded["opus-guarded"]
+	if g == nil {
+		t.Fatal("guarded day not loaded")
+	}
+	if g.Calls["asteras/canopus"] != 5 || g.Calls["canopus"] != 0 || g.Calls["claude-opus-5-5"] != 2 || g.Calls["other/model"] != 3 {
+		t.Errorf("calls = %v, want canopus moved to asteras/canopus", g.Calls)
+	}
+	if g.Rescued["asteras/canopus"] != 5 || g.Rescued["canopus"] != 0 {
+		t.Errorf("rescued = %v", g.Rescued)
+	}
+	if g.Unrescued["asteras/canopus"] != 1 || g.Unrescued["canopus"] != 0 {
+		t.Errorf("unrescued = %v", g.Unrescued)
+	}
+	if !s.dirty["2026-11-25"] {
+		t.Error("migrated day not marked dirty")
+	}
+	// A bare name shared by two chain models is ambiguous and stays put.
+	g2 := &guardedDay{Calls: map[string]int64{"canopus": 5, "b/canopus": 7}}
+	if migrateGuardedKeys(g2, []string{"a/canopus", "b/canopus"}) || g2.Calls["canopus"] != 5 || g2.Calls["a/canopus"] != 0 {
+		t.Errorf("ambiguous bare name moved: %v", g2.Calls)
+	}
+}
+
 func TestPriceLookup(t *testing.T) {
 	tb := &table.Table{Models: map[string]table.Model{}}
 	m := table.Model{}
@@ -270,7 +337,7 @@ func TestPersistenceRoundTripRetentionAndCorruptFile(t *testing.T) {
 
 	loaded := newStatsStore()
 	loaded.dir = dir
-	loaded.load(statsNow)
+	loaded.load(statsNow, pluginConfig{})
 	if _, ok := loaded.days["2026-11-20"]; ok {
 		t.Error("corrupt file loaded")
 	}

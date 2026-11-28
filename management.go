@@ -323,11 +323,7 @@ func (s *statsStore) guardedSnapshot(keys []string, step, buckets int, cfg plugi
 	chains := map[string][]string{}
 	order := []string{}
 	for _, a := range cfg.RefusalFallback {
-		chain := []string{stripThinkingSuffix(a.Primary)}
-		for _, f := range a.Fallback {
-			chain = append(chain, stripThinkingSuffix(f))
-		}
-		chains[a.Alias] = chain
+		chains[a.Alias] = aliasChain(a)
 		order = append(order, a.Alias)
 	}
 	var removed []string
