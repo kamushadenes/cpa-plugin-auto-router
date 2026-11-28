@@ -369,16 +369,21 @@ func (s *statsStore) recordUsage(rec pluginapi.UsageRecord, price usagePrice) {
 	}
 	m.GuardedCalls++
 	g := s.day(dayKey(at)).guarded(tag.alias)
-	inc(&g.Calls, model, 1)
+	// The chain is keyed by the config name, which openai-compatibility providers report in Alias, not in Model.
+	key := model
+	if rec.Alias != "" {
+		key = stripThinkingSuffix(rec.Alias)
+	}
+	inc(&g.Calls, key, 1)
 	switch {
-	case model == tag.primary:
+	case key == tag.primary:
 		if status == "400" {
 			g.Primary400++
 		}
 	case !tag.escalated && rec.Failed:
-		inc(&g.Unrescued, model, 1)
+		inc(&g.Unrescued, key, 1)
 	case !tag.escalated:
-		inc(&g.Rescued, model, 1)
+		inc(&g.Rescued, key, 1)
 	}
 }
 
@@ -435,7 +440,7 @@ func startStats(dir string) {
 	stats.dir = dir
 	stats.mu.Unlock()
 	stats.once.Do(func() {
-		stats.load(time.Now())
+		stats.load(time.Now(), loadedConfig())
 		go stats.loop()
 	})
 }
@@ -478,8 +483,52 @@ func statsFileDay(name string) (string, bool) {
 	return day, true
 }
 
+// aliasChain is the configured chain in chain-key form: primary first, then fallbacks, thinking suffixes removed.
+func aliasChain(a refusalFallbackAlias) []string {
+	chain := []string{stripThinkingSuffix(a.Primary)}
+	for _, f := range a.Fallback {
+		chain = append(chain, stripThinkingSuffix(f))
+	}
+	return chain
+}
+
+// migrateGuardedKeys is compatibility with the daily files written by 0.4.0, which keyed the guarded chain by the bare model name.
+func migrateGuardedKeys(g *guardedDay, chain []string) bool {
+	moved := migrateKeyMap(&g.Calls, chain)
+	if migrateKeyMap(&g.Rescued, chain) {
+		moved = true
+	}
+	return migrateKeyMap(&g.Unrescued, chain) || moved
+}
+
+// migrateKeyMap moves a key onto its chain model only when exactly one chain model has that bare name.
+func migrateKeyMap(m *map[string]int64, chain []string) bool {
+	moved := false
+	for k, n := range *m {
+		if slices.Contains(chain, k) {
+			continue
+		}
+		target := ""
+		for _, c := range chain {
+			if k == c[strings.LastIndex(c, "/")+1:] {
+				if target != "" {
+					target = "" // bare name shared by two chain models: ambiguous, leave the key
+					break
+				}
+				target = c
+			}
+		}
+		if target != "" {
+			inc(m, target, n)
+			delete(*m, k)
+			moved = true
+		}
+	}
+	return moved
+}
+
 // load reads the stored days. A corrupt file is logged and skipped.
-func (s *statsStore) load(now time.Time) {
+func (s *statsStore) load(now time.Time, cfg pluginConfig) {
 	s.mu.Lock()
 	dir := s.dir
 	s.mu.Unlock()
@@ -494,7 +543,12 @@ func (s *statsStore) load(now time.Time) {
 		return
 	}
 	oldest := oldestKept(now)
+	chains := map[string][]string{}
+	for _, a := range cfg.RefusalFallback {
+		chains[a.Alias] = aliasChain(a)
+	}
 	loaded := map[string]*dayStats{}
+	migrated := map[string]bool{}
 	for _, entry := range entries {
 		day, ok := statsFileDay(entry.Name())
 		if !ok || day < oldest {
@@ -509,13 +563,23 @@ func (s *statsStore) load(now time.Time) {
 			hostLog("", "warn", "auto-router stats file skipped", map[string]any{"file": entry.Name()})
 			continue
 		}
+		moved := false
+		for alias, chain := range chains {
+			if g := d.Guarded[alias]; g != nil {
+				moved = migrateGuardedKeys(g, chain) || moved
+			}
+		}
 		loaded[day] = &d
+		migrated[day] = moved
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for day, d := range loaded {
 		if _, ok := s.days[day]; !ok {
 			s.days[day] = d
+			if migrated[day] {
+				s.dirty[day] = true // the flush must replace the 0.4.0 file with the migrated keys
+			}
 		}
 	}
 }
